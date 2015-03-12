@@ -12,7 +12,7 @@ usage() {
                     -l <local_port>         port number of shadowsocks local server
                     -c <config_file>        config file of shadowsocks
                     -i <ignore_list_file>   config file of ignore list
-                    -a <lan_ips>            lan ip of access control, need a prefix to
+					-a <lan_ips>            lan ip of access control, need a prefix to
 							                       define access control mode
                     -e <extra_options>      extra options of iptables
                     -f                      flush the rules
@@ -47,7 +47,7 @@ flush_r() {
                 eval $(echo "$IPT" | grep "shadowsocks" | \
                         sed 's#^-A#-D#g' | awk '{printf("iptables -t nat %s;\n",$0)}')
                 if echo "$IPT" | grep -q "SHADOWSOCKS"; then
-                        iptables -t nat -D PREROUTING -p tcp -j SHADOWSOCKS
+                        iptables -t nat -D PREROUTING -p tcp -s 192.168.0.0/16 -j SHADOWSOCKS
                         iptables -t nat -F SHADOWSOCKS>/dev/null 2>&1 && \
                         iptables -t nat -X SHADOWSOCKS
                 fi
@@ -64,7 +64,7 @@ iptab_r() {
 $PASS                         
 $BODY        
 -A SHADOWSOCKS -p tcp -d 0.0.0.0/0 -j RETURN                         
--A PREROUTING -p tcp -j SHADOWSOCKS                                  
+-A PREROUTING -p tcp -s 192.168.0.0/16 -j SHADOWSOCKS                                  
 COMMIT"                        
         echo -e "$BODY" | iptables-restore -n                        
         exit $?                                                      
@@ -133,7 +133,7 @@ if !(echo "$SERVER" | grep -qE "^([0-9]{1,3}\.){3}[0-9]{1,3}$"); then
         echo "Server IP: $SERVER."                                   
 fi                                                                   
 
-LOCAL_IP=$(uci get network.lan.ipaddr 2>/dev/null)
+#LOCAL_IP=$(uci get network.lan.ipaddr 2>/dev/null)
 IPLIST="8.8.4.0/24\n8.8.8.0/24"
           
 if [ -f "$IGNORE" ]; then
@@ -142,7 +142,7 @@ if [ -f "$IGNORE" ]; then
         IPPASS=$(echo -e "$IPPASS" |sed 's/#//g')
         IPLIST="$(echo -e "$IPLIST" |sed '/^#/d')"
 fi
-IPPASS="$LOCAL_IP\n$SERVER\n$IPPASS"
+IPPASS="$SERVER\n$IPPASS"
 IPPASS=$(echo -e "$IPPASS" |sed '/^\s*$/d')
 IPLIST=$(echo -e "$IPLIST" |sed '/^\s*$/d')
                      
@@ -150,3 +150,4 @@ flush_r
 iptab_r                                                              
                                                               
 exit $?
+
