@@ -200,7 +200,7 @@ if [ -f "$IGNORE" ]; then
         IPLIST="$(echo -e "$IPLIST" |sed '/^#/d')"
 fi
 # @fixme add br-lan subnet into IPPASS
-IPPASS="$SERVER\n$IPPASS\n$WAN_BP_IP\n127.0.0.0/8\n192.168.0.0/16"
+IPPASS="$SERVER\n$IPPASS\n$WAN_BP_IP\n127.0.0.0/8\n192.168.0.0/16\n255.255.255.255"
 IPPASS=$(echo -e "$IPPASS" |sed '/^\s*$/d')
 IPLIST=$(echo -e "$IPLIST" |sed '/^\s*$/d')
 
