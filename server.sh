@@ -7,21 +7,21 @@ if [ -f "$pidfile" ]; then
 fi
 /usr/bin/ss-server -c /etc/vpn/config.json --acl /etc/vpn/local.acl -f $pidfile
 
-echo "ss-dns-redir"
+#echo "ss-dns-redir"
 pidfile="/var/run/ss-dns-redir.pid"
 if [ -f "$pidfile" ]; then
         pid=$(/bin/cat $pidfile)
         /bin/kill $pid
 fi
-/usr/bin/ss-redir -c /etc/vpn/dns.json -b 0.0.0.0 -f $pidfile
+#/usr/bin/ss-redir -c /etc/vpn/dns.json -b 0.0.0.0 -f $pidfile
 
-echo "ss-dns-tunnel"
+#echo "ss-dns-tunnel"
 pidfile="/var/run/ss-dns-tunnel.pid"
 if [ -f "$pidfile" ]; then
         pid=$(/bin/cat $pidfile)
         /bin/kill $pid
 fi
-/usr/bin/ss-tunnel -c /etc/vpn/dns.json -l 5353 -L 10.168.172.192:53 -f $pidfile -u
+#/usr/bin/ss-tunnel -c /etc/vpn/dns.json -l 5353 -L 10.168.172.192:53 -f $pidfile -u
 
 echo "ss-local"
 pidfile="/var/run/ss-local.pid"
