@@ -191,6 +191,8 @@ if [ -f "$IGNORE" ]; then
 	IGNORE_IP=$(cat $IGNORE 2>/dev/null)
 fi
 
+LAN_IP=$(uci get network.lan.ipaddr)
+
 IPLIST="8.8.4.0/24\n8.8.8.0/24"
           
 if [ -f "$IGNORE" ]; then
