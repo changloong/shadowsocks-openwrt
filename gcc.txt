@@ -1,0 +1,10 @@
+-Wno-error=unused-result
+-Os -march=i486 -mssse3 -mfpmath=sse -fomit-frame-pointer -pipe
+-O2 -march=i486 -mssse3 -ftree-loop-if-convert -fomit-frame-pointer -pipe
+
+
+make target/toolchain/install
+make target/sdk/install
+make target/imagebuilder/install
+make target/linux/install
+
