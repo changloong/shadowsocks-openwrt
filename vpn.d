@@ -917,6 +917,10 @@ void main(string args[]){
 	if( _G.ishadowsocks_enable ) {
 		_G.InitPorc(true) ;
 		Thread.sleep( dur!("msecs")( 150 ) );
+		if( stop > 0 ) {
+			_G.stop(true);
+			Thread.sleep( dur!("msecs")( 150 ) );
+		}
 		if( start > 0 ) {
 			_G.start(true) ;
 			Thread.sleep( dur!("msecs")( 150 ) );
