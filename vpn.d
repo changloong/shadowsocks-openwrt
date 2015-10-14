@@ -483,7 +483,7 @@ struct Proxy {
 		} else if( type is Type.Client ) {
 			cmd	= "ss-local" ;
 		}
-		std.file.write(path, j.toString( JSONOptions.specialFloatLiterals) ) ;
+		std.file.write(path, j.toString() ) ;
 		_cmd	~= " -f " ~ pid ~ " >" ~ log ~ " 2>&1 &" ;
 		pool ~= new iProcess(cmd ~ _cmd ,  pid, log);
 	}
