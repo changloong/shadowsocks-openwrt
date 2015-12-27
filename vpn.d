@@ -239,6 +239,7 @@ struct Proxy {
 	
 	string	password ;
 	string 	method = "aes-128-cfb" ;
+	bool	auth = false ;
 	
 	byte	timeout = 45 ;
 	bool	verbose = true ;
@@ -357,17 +358,19 @@ struct Proxy {
 			}
 		}
 		if( type !is Type.Server ) {
-			if( type is Type.Dns ) {
-				local_port	= 5300 ;
-			} else if( type is Type.Client ) {
-				local_port	= 7777 ;
-			} else if( 0 is local_port ) {
-				_G.Error("json(%s).local_port can not be %s!", _name, local_port);
-				_G.Exit(__LINE__) ;
+			if( 0 is local_port ) {
+				if( type is Type.Dns ) {
+                                	local_port      = 5300 ;
+                        	} else if( type is Type.Client ) {
+                                	local_port      = 7777 ;
+                        	} else {
+					_G.Error("json(%s).local_port can not be %s!", _name, local_port);
+					_G.Exit(__LINE__) ;
+				}
 			}
 		}
 
-		_T.getJsonValue!string(password, pJson , "password", exists) ;
+		_T.getJsonValue!string(password, pJson, "password", exists) ;
 		if( !exists ) {
 			_T.getJsonValue!string(password, pJson , "pass", exists) ;
 		}
@@ -383,6 +386,12 @@ struct Proxy {
 			}
 		}
 
+		_T.getJsonValue!bool(auth, pJson, "auth", exists) ;
+		if( !exists ) {
+			if(_default) {
+				auth	= _default.auth ;
+			}
+		}
 		_T.getJsonValue!string(method, pJson, "method", exists) ;
 		_T.getJsonValue!byte(timeout, pJson, "timeout", exists) ;
 		_T.getJsonValue!bool(verbose, pJson, "verbose", exists) ;
@@ -442,7 +451,7 @@ struct Proxy {
 	}
 	
 	void dump(){
-		writefln("(%s) server(%s:%d) local(%s:%d), auth(%s, %s)", name, server, server_port, local_address, local_port, method, password);
+		writefln("(%s) server(%s:%d) local(%s:%d), auth(%s, %s, %s)", name, server, server_port, local_address, local_port, method, password, auth);
 	}
 	
 	void initProcess(ref iProcess*[] pool){
@@ -463,6 +472,7 @@ struct Proxy {
 		j["timeout"] = timeout ;
 		j["verbose"] = verbose ;
 		j["udp_relay"] = udp_relay ;
+		j["auth"] = auth ;
 		
 		if( udp_relay ) {
 			_cmd  ~= " -u" ;
@@ -580,6 +590,7 @@ struct _Environment {
 			dns_proxy.local_port	=  5300 ;
 			dns_proxy.method	= default_proxy.method ;
 			dns_proxy.password	= default_proxy.password ;
+			dns_proxy.auth		= default_proxy.auth ;
 			dns_proxy.timeout	= default_proxy.timeout ;
 			dns_proxy.verbose	= default_proxy.verbose ;
 			dns_proxy.fast_open	= default_proxy.fast_open ;
@@ -592,6 +603,7 @@ struct _Environment {
 			server_proxy.server_port	= 8338 ;
 			server_proxy.method	= default_proxy.method ;
 			server_proxy.password	= default_proxy.password ;
+			server_proxy.auth	= default_proxy.auth ;
 			server_proxy.timeout	= default_proxy.timeout ;
 			server_proxy.verbose	= default_proxy.verbose ;
 			server_proxy.fast_open	= default_proxy.fast_open ;
@@ -606,6 +618,7 @@ struct _Environment {
 			local_proxy.local_port	=  7777 ;
 			local_proxy.method	= default_proxy.method ;
 			local_proxy.password	= default_proxy.password ;
+			local_proxy.auth	= default_proxy.auth ;
 			local_proxy.timeout	= default_proxy.timeout ;
 			local_proxy.verbose	= default_proxy.verbose ;
 			local_proxy.fast_open	= default_proxy.fast_open ;
