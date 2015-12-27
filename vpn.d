@@ -393,13 +393,26 @@ struct Proxy {
 			}
 		}
 		_T.getJsonValue!string(method, pJson, "method", exists) ;
+		if( !exists && _default) {
+                	method	= _default.method ;
+                }
 		_T.getJsonValue!byte(timeout, pJson, "timeout", exists) ;
+		if( !exists && _default) {
+                        timeout  = _default.timeout ;
+                }
 		_T.getJsonValue!bool(verbose, pJson, "verbose", exists) ;
+		if( !exists && _default) {
+                        verbose  = _default.verbose ;
+                }
 		_T.getJsonValue!bool(udp_relay, pJson, "udp_relay", exists) ;
+		if( !exists && _default) {
+                        udp_relay  = _default.udp_relay ;
+                }
 		
-		if( type is Type.Server || type is Type.Client ) {
-			_T.getJsonValue!bool(fast_open, pJson, "fast_open", exists) ;
-		}
+		_T.getJsonValue!bool(fast_open, pJson, "fast_open", exists) ;
+		if( !exists && _default) {
+                        fast_open  = _default.fast_open ;
+                }
 		
 		if( type is Type.Server ) {
 			_T.getJsonValue!string(nameserver, pJson, "nameserver", exists) ;
