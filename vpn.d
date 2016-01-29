@@ -3,7 +3,7 @@
 import core.thread, std.exception, std.json, std.conv, std.array, std.stdio,
     std.file, std.format, std.string, std.socket, std.traits, std.path,
     std.process;
-
+    
 extern (C)
 {
     void exit(int);
@@ -448,16 +448,16 @@ struct Proxy
             _T.getJsonValue!string(local_address, pJson, "local_address", exists);
             if (!exists)
             {
-                if (type is Type.Server || type is Type.Dns || type is Type.Client)
+                if (type is Type.Server )
                 {
+                    local_address = "0.0.0.0";
+                } else if(type is Type.Dns) {
+                    local_address = "127.0.0.1";
+                }  else if(type is Type.Client) {
                     local_address = _G.lan_ip;
-                }
-                else if (_default)
-                {
+                } else if (_default) {
                     local_address = _default.local_address;
-                }
-                else if (type !is Type.Server)
-                {
+                } else {
                     _G.Error("json(%s).local_address not exists!", _name);
                     _G.Exit(__LINE__);
                 }
@@ -489,12 +489,14 @@ struct Proxy
                 }
                 else if (_default)
                 {
-                    if (type is Type.Server || type is Type.Dns || type is Type.Client)
+                    if (type is Type.Server )
                     {
-                        local_address = _G.lan_ip;
-                    }
-                    else
-                    {
+                        local_address = "0.0.0.0" ;
+                    } else if(type is Type.Dns) {
+                        local_address = "127.0.0.1";
+                    }  else if(type is Type.Client) {
+                        local_address = _G.lan_ip ;
+                    } else {
                         local_address = _default.local_address;
                     }
                 }
@@ -511,6 +513,10 @@ struct Proxy
                 else if (type is Type.Client)
                 {
                     local_port = 7777;
+                }
+                else if (type is Type.Redir)
+                {
+                    local_port = 1053;
                 }
                 else
                 {
@@ -582,7 +588,7 @@ struct Proxy
             _T.getJsonValue!string(nameserver, pJson, "nameserver", exists);
             if (!exists)
             {
-                nameserver = _G.lan_ip ~ ":53";
+                nameserver = "0.0.0.0:53";
             }
             else
             {
@@ -718,13 +724,17 @@ struct _Environment
     string lan_ip;
     string lan_netmask;
     string wan_name;
-    string nat_chain;
 
     bool adbyby_enable;
     bool ishadowsocks_enable;
     bool force_reload = false;
     bool verbose = false;
     IP adbyby_ip;
+    
+    bool use_tproxy = true ;
+    bool use_output = true ;
+    
+    bool proxy_flushed = false ;
 
     string[ushort] bind_port_list;
 
@@ -803,11 +813,6 @@ struct _Environment
         scope jRoot = parseJSON(data);
         enforce(jRoot.type is JSON_TYPE.OBJECT);
         bool exists;
-        _T.getJsonValue!string(nat_chain, &jRoot, "nat_chain", exists);
-        if (!exists)
-        {
-            nat_chain = "zone_lan_prerouting";
-        }
         _T.getJsonValue!bool(adbyby_enable, &jRoot, "adbyby", exists);
         _T.getJsonValue!bool(ishadowsocks_enable, &jRoot, "ishadowsocks", exists);
         if (!exists)
@@ -830,7 +835,7 @@ struct _Environment
         {
             dns_proxy.server = default_proxy.server;
             dns_proxy.server_port = default_proxy.server_port;
-            dns_proxy.local_address = lan_ip;
+            dns_proxy.local_address = "127.0.0.1" ;
             dns_proxy.local_port = 5300;
             dns_proxy.method = default_proxy.method;
             dns_proxy.password = default_proxy.password;
@@ -844,7 +849,7 @@ struct _Environment
         p = server_proxy.loadFromJsonValue(Proxy.Type.Server, "server", &jRoot, &default_proxy);
         if (p is null)
         {
-            server_proxy.server = lan_ip;
+            server_proxy.server = "0.0.0.0";
             server_proxy.server_port = 8388;
             server_proxy.method = default_proxy.method;
             server_proxy.password = default_proxy.password;
@@ -961,10 +966,6 @@ struct _Environment
         local_proxy.dump;
         writefln("adbyby=%s", adbyby_enable);
         writefln("ports=%s", bind_port_list);
-        /*
-		writefln("bypass=%s", bypass_rules);
-		writefln("proxy=%s", proxy_rules);
-		*/
     }
 
     void tryGetFreeServer()
@@ -1126,46 +1127,95 @@ struct _Environment
 
     void iptable(bool load, bool flush)
     {
-        auto path = "/tmp/iss_iptables.sh";
+        static string path = "/tmp/iss_shell.sh";
+        static string nat_chain = "SVPN_NAT";
+        static string tproxy_chain = "SVPN_TPROXY";
+        void remove_rules(string table){
+            auto rules = Exec("iptables-save -t " ~ table, true) ;
+            static string match = " SVPN_" ;
+            foreach(ref string rule; lineSplitter(rules)) {
+                auto pos = indexOf(rule, match);
+                if(  pos < 1 ) {
+                  continue ;
+                }
+                auto cmd = "iptables -t " ~ table ~ " -D" ~ _T.trim(rule)[2..$] ;
+                Exec(cmd, true);
+            }
+        }
+        void do_flush() {
+            if( proxy_flushed ) {
+              return ;
+            }
+            Exec("iptables -t nat -F " ~ nat_chain , false);
+            Exec("iptables -t mangle -F " ~ tproxy_chain, false);
+            Exec("iptables -t nat -F zone_lan_prerouting", false);
+            remove_rules("nat");
+            remove_rules("mangle");
+            if( use_tproxy ) {
+                Exec("ip rule del fwmark 0x01/0x01 table 100", false);
+                Exec("ip route del local 0.0.0.0/0 dev lo table 100", false);
+            }
+            Exec("ipset -X gfwset", false);
+            proxy_flushed = true ;
+        }
         if (!load)
         {
             if (flush)
             {
                 writefln(">>>: flush iptables");
-                if (path.exists)
-                    std.file.remove(path);
-                Exec("iptables -t nat -F " ~ nat_chain ~ " && iptables -t nat -X " ~ nat_chain,
-                    false);
+                do_flush() ;
+                if (path.exists) std.file.remove(path) ; 
             }
             return;
         }
-        string[] cmd;
-        cmd ~= "iptables -t nat -A " ~ nat_chain ~ " -d " ~ lan_ip ~ " -j RETURN";
+        
+        auto writer = appender!string();
+        formattedWrite(writer, "ipset create gfwset hash:net\n");
+        foreach (ref rule; proxy_rules)
+        {
+            formattedWrite(writer, "ipset add gfwset %s\n",  rule);
+        }
+        formattedWrite(writer, "ipset add gfwset %s nomatch\n",  lan_ip);
         foreach (ref rule; bypass_rules)
         {
-            cmd ~= "iptables -t nat -A " ~ nat_chain ~ " -d " ~ rule ~ " -j RETURN";
+            formattedWrite(writer, "ipset add gfwset %s nomatch\n",  rule);
         }
         foreach (ref proxy; free_proxies)
         {
-            cmd ~= "iptables -t nat -A " ~ nat_chain ~ " -d " ~ proxy.server ~ " -j RETURN";
+            formattedWrite(writer, "ipset add gfwset %s nomatch\n",  proxy.server);
         }
+        
         string proxy_port = std.conv.to!string(default_proxy.local_port);
-        foreach (ref rule; proxy_rules)
-        {
-            cmd ~= "iptables -t nat -A " ~ nat_chain ~ " -p tcp -d " ~ rule ~ " -j REDIRECT --to-ports " ~ proxy_port;
+        formattedWrite(writer, "iptables -t nat -N %s\n", nat_chain);
+        formattedWrite(writer, "iptables -t nat -A %s -p tcp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n", nat_chain, proxy_port);
+        
+        formattedWrite(writer, "iptables -t nat -I zone_lan_prerouting 1 -p tcp -j %s\n", nat_chain);
+        if( use_output) {
+            formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p tcp -j %s\n", nat_chain);
         }
+        
+        if( use_tproxy ) {
+            formattedWrite(writer, "ip rule add fwmark 0x01/0x01 table 100\n");
+            formattedWrite(writer, "ip route add local 0.0.0.0/0 dev lo table 100\n");
+            formattedWrite(writer, "iptables -t mangle -N %s\n", tproxy_chain);
+            formattedWrite(writer, "iptables -t mangle -A %s -p udp -m set --match-set gfwset dst  -j TPROXY --on-port \"%s\" --tproxy-mark 0x01/0x01\n", tproxy_chain, proxy_port);
+            formattedWrite(writer, "iptables -t mangle -I PREROUTING 1 -i br-lan -p udp -j %s\n", tproxy_chain);
+            formattedWrite(writer, "#iptables -t mangle -I OUTPUT 1 -p udp -j %s\n", tproxy_chain);
+        }
+        
         if (adbyby_enable)
         {
-            cmd ~= "iptables -t nat -A " ~ nat_chain ~ " -p tcp --dport 80 -j REDIRECT --to-ports 8118";
+            formattedWrite(writer, "iptables -t nat -A zone_lan_prerouting -p tcp --dport 80 -j REDIRECT --to-ports 8118\n");
         }
-        auto shell = std.array.join(cmd, "\n");
-        if (!path.exists || shell != path.readText)
+        
+        if (!path.exists || writer.data != path.readText)
         {
-            writefln(">>>: reload iptables");
-            Exec("iptables -t nat -F " ~ nat_chain ~ " && iptables -t nat -X " ~ nat_chain,
-                false);
-            Exec(shell, false);
-            std.file.write(path, shell);
+            std.file.write(path, writer.data);
+            if( !proxy_flushed ) {
+              writefln(">>>: reload iptables");
+              do_flush() ;
+            }
+            Exec( "/bin/sh " ~ path, true, true);
         }
     }
 }

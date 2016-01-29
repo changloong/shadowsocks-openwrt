@@ -1,2 +1,5 @@
-GoAgentX
+/GoAgentX
+/vpn
+/run.sh
 *.o
+*~
