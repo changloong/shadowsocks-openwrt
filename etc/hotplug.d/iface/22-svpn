@@ -1,0 +1,8 @@
+#!/bin/sh
+
+[ "$ACTION" = ifup ] || exit 0
+[ "$INTERFACE" = wan ] || exit 0
+
+logger -t vpn "Reloading shadowsocks due to $ACTION of $INTERFACE ($DEVICE)"
+/etc/ddns/ddns > /tmp/ddns.log 2>&1
+/etc/vpn/vpn > /tmp/vpn.log 2>&1

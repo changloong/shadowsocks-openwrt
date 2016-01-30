@@ -1170,6 +1170,7 @@ struct _Environment
     void iptable(bool load, bool flush)
     {
         static string path = "/tmp/svpn_shell.sh";
+        static string forward_chain = "SVPN_FORWARD";
         static string nat_chain = "SVPN_NAT";
         static string udp_chain = "SVPN_UDP";
         static string tproxy_chain = "SVPN_TPROXY";
@@ -1191,10 +1192,13 @@ struct _Environment
             if( proxy_flushed ) {
               return ;
             }
-            Exec("iptables -t nat -F " ~ nat_chain , false);
-            Exec("iptables -t nat -F " ~ udp_chain , false);
+            Exec("iptables -t filter -F " ~ forward_chain, false);
+            Exec("iptables -t nat -F " ~ nat_chain, false);
+            Exec("iptables -t nat -F " ~ udp_chain, false);
             Exec("iptables -t mangle -F " ~ tproxy_chain, false);
+            Exec("iptables -t filter -F forwarding_rule", false);
             Exec("iptables -t nat -F zone_lan_prerouting", false);
+			
             remove_rules("filter");
             remove_rules("nat");
             remove_rules("mangle");
@@ -1233,28 +1237,38 @@ struct _Environment
             formattedWrite(writer, "ipset add gfwset %s nomatch\n",  proxy.server);
         }
         
-        string proxy_port = std.conv.to!string(default_proxy.local_port);
+        auto tcp_proxy_port = default_proxy.local_port ;
+		auto udp_proxy_port = tcp_proxy_port ;
+		bool use_udp_output	= false ;
 		
         formattedWrite(writer, "iptables -t nat -N %s\n", nat_chain);
-        formattedWrite(writer, "iptables -t nat -A %s -p tcp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n", nat_chain, proxy_port);
-		
-		/*
-	    formattedWrite(writer, "iptables -t nat -N %s\n", udp_chain);
-        formattedWrite(writer, "iptables -t nat -A %s -p udp -m set --match-set gfwset dst -j SNAT --to-source %s\n", udp_chain, lan_ip);
-		*/
-		
+        formattedWrite(writer, "iptables -t nat -A %s -p tcp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n", nat_chain, tcp_proxy_port);
         formattedWrite(writer, "iptables -t nat -I zone_lan_prerouting 1 -p tcp -j %s\n", nat_chain);
+		
+		if( use_udp_output ) {
+        	formattedWrite(writer, "iptables -t filter -N %s\n", forward_chain);
+        	formattedWrite(writer, "iptables -t filter -A %s -p udp -j ACCEPT\n", forward_chain, lan_ip);
+        	formattedWrite(writer, "iptables -t filter -I forwarding_rule 1 -p udp -j %s\n", forward_chain);
+		
+	    	formattedWrite(writer, "iptables -t nat -N %s\n", udp_chain);
+        	// formattedWrite(writer, "iptables -t nat -A %s -p udp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n", udp_chain, udp_proxy_port);
+        	formattedWrite(writer, "iptables -t nat -A %s -p udp -m set --match-set gfwset dst -j SNAT --to-source %s\n", udp_chain, lan_ip);
+		}
+		
         if( use_output) {
-        	formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p udp -j %s\n", nat_chain);
-            // formattedWrite(writer, "iptables -t nat -I INPUT 1 -p tcp -j %s\n", udp_chain);
+        	formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p tcp -j %s\n", nat_chain);
+        	//formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p udp -j %s\n", udp_chain);
+			if( use_udp_output ) {
+            	formattedWrite(writer, "iptables -t nat -I INPUT 1 -p udp -j %s\n", udp_chain);
+			}
         }
 		
         if( use_tproxy ) {
             formattedWrite(writer, "ip rule add fwmark 0x01/0x01 table 100\n");
             formattedWrite(writer, "ip route add local 0.0.0.0/0 dev lo table 100\n");
             formattedWrite(writer, "iptables -t mangle -N %s\n", tproxy_chain);
-            formattedWrite(writer, "iptables -t mangle -A %s -p udp -m set --match-set gfwset dst  -j TPROXY --on-port \"%s\" --tproxy-mark 0x01/0x01\n", tproxy_chain, proxy_port);
-            formattedWrite(writer, "iptables -t mangle -I PREROUTING 1 -i by-lan -p udp -j %s\n", tproxy_chain);
+            formattedWrite(writer, "iptables -t mangle -A %s -p udp -m set --match-set gfwset dst -j TPROXY --on-port \"%s\" --tproxy-mark 0x01/0x01\n", tproxy_chain, udp_proxy_port );
+            formattedWrite(writer, "iptables -t mangle -I PREROUTING 1 -i br-lan -p udp -j %s\n", tproxy_chain);
         }
         
         if (adbyby_enable)
