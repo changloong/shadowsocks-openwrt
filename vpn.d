@@ -180,13 +180,7 @@ struct _T
                 else if (p.type is JSON_TYPE.FLOAT)
                 {
                     t = p.floating ? true : false;
-                }
-                else if (p.type is JSON_TYPE.STRING)
-                {
-                    t = std.conv.to!T(p.str);
-                }
-                else
-                {
+				} else {
                     return p;
                 }
             }
@@ -339,6 +333,8 @@ struct Proxy
     bool udp_relay = true;
 
     string nameserver;
+	
+	bool enabled  = true ;
 
     void loadFromiFree(string name, string ip, string port, string method,
         string psword, ushort local_port, Proxy* local)
@@ -366,6 +362,9 @@ struct Proxy
         {
             return null;
         }
+		if( pJson.type !is JSON_TYPE.OBJECT ) {
+            return null;
+		}
         bool exists;
         _T.getJsonValue!short(server_port, pJson, "server_port", exists);
         if (exists)
@@ -583,12 +582,12 @@ struct Proxy
             fast_open = _default.fast_open;
         }
 
-        if (type is Type.Server)
+        if (type is Type.Server )
         {
             _T.getJsonValue!string(nameserver, pJson, "nameserver", exists);
             if (!exists)
             {
-                nameserver = "0.0.0.0:53";
+                nameserver = "127.0.0.1:53";
             }
             else
             {
@@ -629,6 +628,9 @@ struct Proxy
 
     void check(ref string[ushort] exists)
     {
+		if( !enabled ) {
+			return ;
+		}
         string* p;
         if (type is Type.Server)
         {
@@ -655,15 +657,18 @@ struct Proxy
 
     void dump()
     {
-        writefln("%s server=%s:%d local=%s:%d  auth=%s,%s,%s", name, server,
+        writefln("%s=%s server=%s:%d local=%s:%d  auth=%s,%s,%s", name, enabled, server,
             server_port, local_address, local_port, method, password, auth);
     }
 
     void initProcess(ref iProcess*[] pool)
     {
-        string log = "/tmp/log/iss-" ~ name ~ ".log";
-        string pid = "/tmp/run/iss-" ~ name ~ ".pid";
-        string path = "/tmp/etc/iss-" ~ name ~ ".json";
+		if( !enabled ) {
+			return ;
+		}
+        string log = "/tmp/log/svpn-" ~ name ~ ".log";
+        string pid = "/tmp/run/svpn-" ~ name ~ ".pid";
+        string path = "/tmp/etc/svpn-" ~ name ~ ".json";
         string cmd;
         string _cmd = "";
         _cmd ~= " -c " ~ path;
@@ -833,36 +838,72 @@ struct _Environment
         p = dns_proxy.loadFromJsonValue(Proxy.Type.Dns, "dns", &jRoot, &default_proxy);
         if (p is null)
         {
-            dns_proxy.server = default_proxy.server;
-            dns_proxy.server_port = default_proxy.server_port;
-            dns_proxy.local_address = "127.0.0.1" ;
-            dns_proxy.local_port = 5300;
-            dns_proxy.method = default_proxy.method;
-            dns_proxy.password = default_proxy.password;
-            dns_proxy.auth = default_proxy.auth;
-            dns_proxy.timeout = default_proxy.timeout;
-            dns_proxy.verbose = default_proxy.verbose;
-            dns_proxy.fast_open = default_proxy.fast_open;
-            dns_proxy.udp_relay = default_proxy.udp_relay;
-            dns_proxy.nameserver = "8.8.8.8:53";
+			bool has_dns	= false ;
+			string dns_value = null ;
+			auto pDns	= _T.getJsonValue!bool(has_dns, &jRoot, "dns", exists);
+			if( exists && pDns.type is JSON_TYPE.STRING ) {
+				_T.getJsonValue!string(dns_value, &jRoot, "dns", exists);
+				if( exists ) {
+	                auto dns_ip = IP(dns_value);
+	                if (dns_ip.uport is 0)
+	                {
+	                    dns_value = dns_ip.ip ~ ":53";
+	                }
+	                else
+	                {
+	                    dns_value = dns_ip.ip ~ ":" ~ dns_ip.port;
+	                }
+				}
+			}
+			if( has_dns || dns_value ) {
+	            dns_proxy.server = default_proxy.server;
+	            dns_proxy.server_port = default_proxy.server_port;
+	            dns_proxy.local_address = "127.0.0.1" ;
+	            dns_proxy.local_port = 5300;
+	            dns_proxy.method = default_proxy.method;
+	            dns_proxy.password = default_proxy.password;
+	            dns_proxy.auth = default_proxy.auth;
+	            dns_proxy.timeout = default_proxy.timeout;
+	            dns_proxy.verbose = default_proxy.verbose;
+	            dns_proxy.fast_open = default_proxy.fast_open;
+	            dns_proxy.udp_relay = default_proxy.udp_relay;
+				if( dns_value ) {
+		            dns_proxy.nameserver = dns_value ;
+				} else {
+		            dns_proxy.nameserver = "8.8.8.8:53" ;
+				}
+			} else {
+				dns_proxy.enabled	= false ;
+			}
         }
         p = server_proxy.loadFromJsonValue(Proxy.Type.Server, "server", &jRoot, &default_proxy);
         if (p is null)
         {
-            server_proxy.server = "0.0.0.0";
-            server_proxy.server_port = 8388;
-            server_proxy.method = default_proxy.method;
-            server_proxy.password = default_proxy.password;
-            server_proxy.auth = default_proxy.auth;
-            server_proxy.timeout = default_proxy.timeout;
-            server_proxy.verbose = default_proxy.verbose;
-            server_proxy.fast_open = default_proxy.fast_open;
-            server_proxy.udp_relay = default_proxy.udp_relay;
-            server_proxy.nameserver = _G.lan_ip ~ ":53";
+			bool has_server	= false ;
+			_T.getJsonValue!bool(has_server, &jRoot, "server", exists);
+			if( exists && !has_server ) {
+				server_proxy.enabled	= false ;
+			} else {
+	            server_proxy.server = "0.0.0.0";
+	            server_proxy.server_port = 8388;
+	            server_proxy.method = default_proxy.method;
+	            server_proxy.password = default_proxy.password;
+	            server_proxy.auth = default_proxy.auth;
+	            server_proxy.timeout = default_proxy.timeout;
+	            server_proxy.verbose = default_proxy.verbose;
+	            server_proxy.fast_open = default_proxy.fast_open;
+	            server_proxy.udp_relay = default_proxy.udp_relay;
+	            server_proxy.nameserver = _G.lan_ip ~ ":53";
+			}
         }
-        p = local_proxy.loadFromJsonValue(Proxy.Type.Client, "client", &jRoot, &default_proxy);
+        p = local_proxy.loadFromJsonValue(Proxy.Type.Client, "local", &jRoot, &default_proxy);
         if (p is null)
         {
+			bool has_local	= false ;
+			_T.getJsonValue!bool(has_local, &jRoot, "local", exists);
+			if( exists && !has_local ) {
+				local_proxy.enabled	= false ;
+			} else {
             local_proxy.server = default_proxy.server;
             local_proxy.server_port = default_proxy.server_port;
             local_proxy.local_address = lan_ip;
@@ -874,6 +915,7 @@ struct _Environment
             local_proxy.verbose = default_proxy.verbose;
             local_proxy.fast_open = default_proxy.fast_open;
             local_proxy.udp_relay = default_proxy.udp_relay;
+		}
         }
 
         if (adbyby_enable)
@@ -1127,15 +1169,18 @@ struct _Environment
 
     void iptable(bool load, bool flush)
     {
-        static string path = "/tmp/iss_shell.sh";
+        static string path = "/tmp/svpn_shell.sh";
         static string nat_chain = "SVPN_NAT";
+        static string udp_chain = "SVPN_UDP";
         static string tproxy_chain = "SVPN_TPROXY";
         void remove_rules(string table){
             auto rules = Exec("iptables-save -t " ~ table, true) ;
             static string match = " SVPN_" ;
+			static string gfw_dst = " gfwset dst ";
             foreach(ref string rule; lineSplitter(rules)) {
                 auto pos = indexOf(rule, match);
-                if(  pos < 1 ) {
+                auto pos2 = indexOf(rule, gfw_dst);
+                if(  pos < 1 && pos2 < 1) {
                   continue ;
                 }
                 auto cmd = "iptables -t " ~ table ~ " -D" ~ _T.trim(rule)[2..$] ;
@@ -1147,8 +1192,10 @@ struct _Environment
               return ;
             }
             Exec("iptables -t nat -F " ~ nat_chain , false);
+            Exec("iptables -t nat -F " ~ udp_chain , false);
             Exec("iptables -t mangle -F " ~ tproxy_chain, false);
             Exec("iptables -t nat -F zone_lan_prerouting", false);
+            remove_rules("filter");
             remove_rules("nat");
             remove_rules("mangle");
             if( use_tproxy ) {
@@ -1175,6 +1222,7 @@ struct _Environment
         {
             formattedWrite(writer, "ipset add gfwset %s\n",  rule);
         }
+        formattedWrite(writer, "ipset add gfwset 127.0.0.1 nomatch\n");
         formattedWrite(writer, "ipset add gfwset %s nomatch\n",  lan_ip);
         foreach (ref rule; bypass_rules)
         {
@@ -1186,21 +1234,27 @@ struct _Environment
         }
         
         string proxy_port = std.conv.to!string(default_proxy.local_port);
+		
         formattedWrite(writer, "iptables -t nat -N %s\n", nat_chain);
         formattedWrite(writer, "iptables -t nat -A %s -p tcp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n", nat_chain, proxy_port);
-        
+		
+		/*
+	    formattedWrite(writer, "iptables -t nat -N %s\n", udp_chain);
+        formattedWrite(writer, "iptables -t nat -A %s -p udp -m set --match-set gfwset dst -j SNAT --to-source %s\n", udp_chain, lan_ip);
+		*/
+		
         formattedWrite(writer, "iptables -t nat -I zone_lan_prerouting 1 -p tcp -j %s\n", nat_chain);
         if( use_output) {
-            formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p tcp -j %s\n", nat_chain);
+        	formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p udp -j %s\n", nat_chain);
+            // formattedWrite(writer, "iptables -t nat -I INPUT 1 -p tcp -j %s\n", udp_chain);
         }
-        
+		
         if( use_tproxy ) {
             formattedWrite(writer, "ip rule add fwmark 0x01/0x01 table 100\n");
             formattedWrite(writer, "ip route add local 0.0.0.0/0 dev lo table 100\n");
             formattedWrite(writer, "iptables -t mangle -N %s\n", tproxy_chain);
             formattedWrite(writer, "iptables -t mangle -A %s -p udp -m set --match-set gfwset dst  -j TPROXY --on-port \"%s\" --tproxy-mark 0x01/0x01\n", tproxy_chain, proxy_port);
-            formattedWrite(writer, "iptables -t mangle -I PREROUTING 1 -i br-lan -p udp -j %s\n", tproxy_chain);
-            formattedWrite(writer, "#iptables -t mangle -I OUTPUT 1 -p udp -j %s\n", tproxy_chain);
+            formattedWrite(writer, "iptables -t mangle -I PREROUTING 1 -i by-lan -p udp -j %s\n", tproxy_chain);
         }
         
         if (adbyby_enable)
