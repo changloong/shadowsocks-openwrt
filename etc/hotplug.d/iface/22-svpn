@@ -6,3 +6,4 @@
 logger -t vpn "Reloading shadowsocks due to $ACTION of $INTERFACE ($DEVICE)"
 /etc/ddns/ddns > /tmp/ddns.log 2>&1
 /etc/vpn/vpn > /tmp/vpn.log 2>&1
+/etc/vpn/svpn.sh  >> /tmp/vpn.log 2>&1
