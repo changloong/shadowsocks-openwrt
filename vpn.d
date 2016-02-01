@@ -515,7 +515,11 @@ struct Proxy {
             _cmd ~= " --fast-open";
         }
         if (type is Type.Redir) {
-            cmd = "ss-redir";
+			if( "udp" == name ) {
+	            cmd = "ss-redir-udp";
+			} else {
+	            cmd = "ss-redir";
+			}
         } else if (type is Type.Dns) {
             cmd = "ss-tunnel";
             _cmd ~= " -L " ~ nameserver;
@@ -563,6 +567,7 @@ struct _Environment {
 
     string[] bypass_rules;
     string[] proxy_rules;
+    string[] redir_rules;
 
     iProcess*[] base_proc;
     iProcess*[] lazy_proc;
@@ -682,8 +687,7 @@ struct _Environment {
         }
 
         p = dns_proxy.loadFromJsonValue(Proxy.Type.Dns, "dns", &jRoot, &default_proxy);
-		udp_proxy.udp_relay	= true ;
-		udp_proxy.udp_only	= true ;
+		dns_proxy.udp_relay	= true ;
         if (p is null) {
             bool has_dns = false;
             string dns_value = null;
@@ -786,28 +790,38 @@ struct _Environment {
         scope file = File(path);
         scope (exit)
             file.close;
+		
+		static string strip32(char[] line) {
+			if( line.length < 1 ) {
+				return null ;
+			}
+            line = line[1 .. $];
+            auto pos = std.string.indexOf(line, '/');
+            if (pos > 0 && _T.trim(line[pos + 1 .. $]) == "32") {
+                line = _T.trim(line[0 .. pos]);
+            }
+			return line.idup ;
+		}
         foreach (ref line; file.byLine) {
             line = _T.trim(line);
             if (line.length is 0 || line[0] is ';')
                 continue;
-            int pos = std.string.indexOf(line, ';');
+            auto pos = std.string.indexOf(line, ';');
             if (pos > 0) {
-                line = line[0 .. pos];
+                line = _T.trim(line[0 .. pos]) ;
             }
             if (line.length is 0)
                 continue;
-            if (line[0] !is '#') {
-                proxy_rules ~= line.idup;
-                continue;
-            }
-            if (line.length > 1) {
-                line = line[1 .. $];
-                pos = std.string.indexOf(line, '/');
-                if (pos > 0 && line[pos + 1 .. $] == "32") {
-                    line = line[0 .. pos];
-                }
-                bypass_rules ~= line.idup;
-            }
+			switch(line[0]) {
+				case '#':
+                	bypass_rules ~= strip32(line);
+					break;
+				case '!':
+                	redir_rules ~= strip32(line);
+					break;
+				default:
+                	proxy_rules ~= line.idup;
+			}
         }
     }
 
@@ -1002,6 +1016,7 @@ struct _Environment {
             Exec("iptables -t nat -F " ~ udp_chain, false);
             Exec("iptables -t mangle -F " ~ tproxy_chain, false);
             Exec("iptables -t filter -F forwarding_rule", false);
+            Exec("iptables -t nat -F prerouting_rule", false);
             Exec("iptables -t nat -F zone_lan_prerouting", false);
 
             remove_rules("filter");
@@ -1035,6 +1050,9 @@ struct _Environment {
         foreach (ref rule; bypass_rules) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
         }
+		foreach(ref rule; redir_rules) {
+            formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
+		}
         foreach (ref proxy; free_proxies) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", proxy.server);
         }
@@ -1050,6 +1068,11 @@ struct _Environment {
             }
         }
 
+		foreach(ref rule; redir_rules) {
+            formattedWrite(writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport 80 -j DNAT --to-destination %s:8080\n", rule, rule);
+            formattedWrite(writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport 443 -j DNAT --to-destination %s:8443\n", rule, rule);
+		}
+		
         formattedWrite(writer, "iptables -t nat -N %s\n", nat_chain);
         formattedWrite(writer,
             "iptables -t nat -A %s -p tcp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n",
