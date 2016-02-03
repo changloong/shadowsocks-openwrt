@@ -77,7 +77,42 @@ struct Section {
 }
 
 struct _T {
-
+    
+    static string[] split(string input, string p = " \t\n\r" ){
+        string[] output ;
+        if( p is null || p.length is 0 ){
+          return output ;
+        }
+        auto plen = p.length ;
+        auto len = input.length ;
+        ptrdiff_t last_element_index = -1 ;
+        for( size_t i = 0; i < len ; i++ ) {
+          bool matched = false ;
+          for(size_t j=0; j < plen; j++ ) {
+            if(p[j] is input[i]) {
+              matched = true ;
+              break ;
+            }
+          }
+          
+          if( matched ) {
+            if( last_element_index !is -1 ) {
+              output  ~= input[last_element_index .. i] ;
+              last_element_index  = -1 ;
+            }
+            continue ;
+          }
+          // start_index
+          if(  last_element_index is -1 ) {
+            last_element_index  = i ;
+          }
+        }
+        if( last_element_index !is -1) {
+              output  ~= input[last_element_index .. $] ;
+        }
+        return output ;
+    }
+    
     static ref string ltrim(ref string s, char c = ' ') {
         while (s.length > 0) {
             if (s[0] is c) {
@@ -212,6 +247,64 @@ struct iProcess {
     }
 }
 
+struct iRedir {
+    string ip;
+    IP[ushort] redirs;
+    
+    static iRedir*[string] list;
+    static void load(string line) {
+      auto ls = _T.split(line) ;
+      if( ls.length is 0){
+        return ;
+      }
+      string ip = ls[0] ;
+      auto it = new iRedir(ip) ;
+      list[ ip ] = it ;
+      if( ls.length is 1){
+        return ;
+      }
+      foreach( _line ;ls[1..$]) {
+        auto _ls = _T.split(_line, ":") ;
+        auto _ip = IP(_ls[0]) ;
+        if( _ip.u32 !is 0 ) {
+          _G.Error("invalid rules:%s, can not use 0.0.0.0 as redir target", line);
+        }
+        if( _ip.uport is 0 ) {
+          _G.Error("invalid rules:%s, can not use 0.0.0.0:0 as redir target", line);
+        }
+        switch(_ls.length) {
+          case 1:
+            it.redirs[ _ip.uport ] = IP( ip ~ ':' ~ _ip.port );
+            break;
+          case 2:
+            auto pos = std.string.indexOf(_ls[1], '.');
+            if( pos < 0 || pos > _ls[1].length ) {
+              _G.Error("invalid rules:%s can not use ip(%s) without port", line, _ls[1]);
+            }
+            auto _ip2 = IP(_ls[1]) ;
+            if( _ip2.uport is 0) {
+              _G.Error("invalid rules:%s can not use target port(%s) as 0", line, _ls[1] );
+            }
+            it.redirs[ _ip.uport ] = IP( ip ~ ':' ~ _ip2.port );
+            break;
+          case 3:
+            auto _ip2 = IP(_ls[1] ~ ":" ~ _ls[2] ) ;
+            if( _ip2.uport is 0) {
+              _G.Error("invalid rules:%s can not use target (%s:%s) port as 0", line, _ls[1], _ls[2] );
+            }
+            if( _ip2.u32 is 0) {
+              _G.Error("invalid rules:%s can not use target (%s:%s) ip as 0.0.0.0", line, _ls[1], _ls[2] );
+            } 
+            it.redirs[ _ip.uport ] = _ip2 ;
+            break;
+          default:
+            _G.Error("invalid rules:%s", line);
+            ;
+        }
+      }
+    }
+}
+
 struct Proxy {
     enum Type {
         Server = 0,
@@ -240,7 +333,7 @@ struct Proxy {
     string nameserver;
 
     bool enabled = true;
-	bool udp_only = false ;
+    bool udp_only = false;
 
     void loadFromiFree(string name, string ip, string port, string method, string psword,
         ushort local_port, Proxy* local) {
@@ -323,14 +416,14 @@ struct Proxy {
         if (exists) {
             _T.getJsonValue!string(local_address, pJson, "local_address", exists);
             if (!exists) {
-                if (type is Type.Server || type is Type.Redir ) {
+                if (type is Type.Server || type is Type.Redir) {
                     local_address = "0.0.0.0";
                 } else if (type is Type.Dns) {
                     local_address = "127.0.0.1";
                 } else if (type is Type.Client) {
                     local_address = _G.lan_ip;
                 } else if (_default) {
-					local_address = _default.local_address ;
+                    local_address = _default.local_address;
                 } else {
                     _G.Error("json(%s).local_address not exists!", _name);
                     _G.Exit(__LINE__);
@@ -343,7 +436,7 @@ struct Proxy {
                 local_address = local_ip.ip;
                 if (local_ip.uport !is 0) {
                     local_port = local_ip.uport;
-				} 
+                }
             } else {
                 _T.getJsonValue!string(local_address, pJson, "local", exists);
                 if (exists) {
@@ -353,9 +446,9 @@ struct Proxy {
                         local_port = local_ip.uport;
                     }
                 } else if (_default) {
-                    if ( type is Type.Server || type is Type.Redir ) {
+                    if (type is Type.Server || type is Type.Redir) {
                         local_address = "0.0.0.0";
-                    } else if (type is Type.Dns ) {
+                    } else if (type is Type.Dns) {
                         local_address = "127.0.0.1";
                     } else if (type is Type.Client) {
                         local_address = _G.lan_ip;
@@ -365,7 +458,7 @@ struct Proxy {
                 }
             }
         }
-		
+
         if (type !is Type.Server) {
             if (0 is local_port) {
                 if (type is Type.Dns) {
@@ -373,7 +466,7 @@ struct Proxy {
                 } else if (type is Type.Client) {
                     local_port = 7777;
                 } else if (type is Type.Redir) {
-                    local_port = _default ? 1055 : 1053 ;
+                    local_port = _default ? 1055 : 1053;
                 } else {
                     _G.Error("json(%s).local_port can not be %s!", _name, local_port);
                     _G.Exit(__LINE__);
@@ -505,21 +598,21 @@ struct Proxy {
         j["auth"] = auth;
 
         if (udp_relay) {
-			if( udp_only ) {
-	            _cmd ~= " -U";
-			} else {
-				_cmd ~= " -u";
-			}
+            if (udp_only) {
+                _cmd ~= " -U";
+            } else {
+                _cmd ~= " -u";
+            }
         }
         if (fast_open) {
             _cmd ~= " --fast-open";
         }
         if (type is Type.Redir) {
-			if( "udp" == name ) {
-	            cmd = "ss-redir-udp";
-			} else {
-	            cmd = "ss-redir";
-			}
+            if ("udp" == name) {
+                cmd = "ss-redir-udp";
+            } else {
+                cmd = "ss-redir";
+            }
         } else if (type is Type.Dns) {
             cmd = "ss-tunnel";
             _cmd ~= " -L " ~ nameserver;
@@ -567,7 +660,6 @@ struct _Environment {
 
     string[] bypass_rules;
     string[] proxy_rules;
-    string[] redir_rules;
 
     iProcess*[] base_proc;
     iProcess*[] lazy_proc;
@@ -637,27 +729,27 @@ struct _Environment {
         }
 
         p = udp_proxy.loadFromJsonValue(Proxy.Type.Redir, "udp", &jRoot, &default_proxy);
-        udp_proxy.name = "udp" ;
-		udp_proxy.udp_relay	= true ;
-		udp_proxy.udp_only	= true ;
+        udp_proxy.name = "udp";
+        udp_proxy.udp_relay = true;
+        udp_proxy.udp_only = true;
         if (p is null) {
             udp_proxy.enabled = false;
             bool has_udp = false;
             string udp_value = null;
             auto pUdp = _T.getJsonValue!bool(has_udp, &jRoot, "udp", exists);
-			if( !exists ) {
-				// not setting , use default server local port 
-				udp_proxy.local_port	= default_proxy.local_port ;
-			} else if( pUdp is null || pUdp.type !is JSON_TYPE.STRING ) {
-				if( has_udp ) {
-					// use default server local port 
-					udp_proxy.local_port	= default_proxy.local_port ;
-				} else {
-					use_tproxy	= false ;
-				}
-			} else if( pUdp.type is JSON_TYPE.STRING ) {
+            if (!exists) {
+                // not setting , use default server local port 
+                udp_proxy.local_port = default_proxy.local_port;
+            } else if (pUdp is null || pUdp.type !is JSON_TYPE.STRING) {
+                if (has_udp) {
+                    // use default server local port 
+                    udp_proxy.local_port = default_proxy.local_port;
+                } else {
+                    use_tproxy = false;
+                }
+            } else if (pUdp.type is JSON_TYPE.STRING) {
                 _T.getJsonValue!string(udp_value, &jRoot, "udp", exists);
-                if (exists && udp_value !is null && udp_value.length > 1 ) {
+                if (exists && udp_value !is null && udp_value.length > 1) {
                     auto udp_ip = IP(udp_value);
                     if ("0.0.0.0" == udp_ip.ip) {
                         udp_proxy.server = default_proxy.server;
@@ -669,13 +761,13 @@ struct _Environment {
                     } else {
                         udp_proxy.server_port = udp_ip.uport;
                     }
-				} else {
-					udp_value	= null ;
-				}
+                } else {
+                    udp_value = null;
+                }
             }
-            if ( udp_value ) {
+            if (udp_value) {
                 udp_proxy.local_address = "0.0.0.0";
-                udp_proxy.local_port = 1055 ;
+                udp_proxy.local_port = 1055;
                 udp_proxy.method = default_proxy.method;
                 udp_proxy.password = default_proxy.password;
                 udp_proxy.auth = default_proxy.auth;
@@ -687,32 +779,32 @@ struct _Environment {
         }
 
         p = dns_proxy.loadFromJsonValue(Proxy.Type.Dns, "dns", &jRoot, &default_proxy);
-		dns_proxy.udp_relay	= true ;
+        dns_proxy.udp_relay = true;
         if (p is null) {
             bool has_dns = false;
             string dns_value = null;
             auto pDns = _T.getJsonValue!bool(has_dns, &jRoot, "dns", exists);
-			if( !exists ) {
-				// not setting, use default server as dns 
-				has_dns	= true ;
-			} else if( pDns is null || pDns.type !is JSON_TYPE.STRING) {
-				if( !has_dns ) { 
-					dns_proxy.enabled = false ;
-				}
-			} else if(pDns.type is JSON_TYPE.STRING) {
+            if (!exists) {
+                // not setting, use default server as dns 
+                has_dns = true;
+            } else if (pDns is null || pDns.type !is JSON_TYPE.STRING) {
+                if (!has_dns) {
+                    dns_proxy.enabled = false;
+                }
+            } else if (pDns.type is JSON_TYPE.STRING) {
                 _T.getJsonValue!string(dns_value, &jRoot, "dns", exists);
-                if (exists && dns_value !is null && dns_value.length > 1 ) {
+                if (exists && dns_value !is null && dns_value.length > 1) {
                     auto dns_ip = IP(dns_value);
                     if (dns_ip.uport is 0) {
                         dns_value = dns_ip.ip ~ ":53";
                     } else {
                         dns_value = dns_ip.ip ~ ":" ~ dns_ip.port;
                     }
-				} else {
-					dns_value = null ;
-				}
-			}
-			
+                } else {
+                    dns_value = null;
+                }
+            }
+
             if (has_dns || dns_value) {
                 dns_proxy.server = default_proxy.server;
                 dns_proxy.server_port = default_proxy.server_port;
@@ -729,7 +821,7 @@ struct _Environment {
                 } else {
                     dns_proxy.nameserver = "8.8.8.8:53";
                 }
-            } 
+            }
         }
         p = server_proxy.loadFromJsonValue(Proxy.Type.Server, "server", &jRoot, &default_proxy);
         if (p is null) {
@@ -746,7 +838,7 @@ struct _Environment {
                 server_proxy.timeout = default_proxy.timeout;
                 server_proxy.verbose = default_proxy.verbose;
                 server_proxy.fast_open = default_proxy.fast_open;
-                server_proxy.udp_relay = true ;
+                server_proxy.udp_relay = true;
                 server_proxy.nameserver = _G.lan_ip ~ ":53";
             }
         }
@@ -790,38 +882,39 @@ struct _Environment {
         scope file = File(path);
         scope (exit)
             file.close;
-		
-		static string strip32(char[] line) {
-			if( line.length < 1 ) {
-				return null ;
-			}
+
+        static string strip32(char[] line) {
+            if (line.length < 1) {
+                return null;
+            }
             line = line[1 .. $];
             auto pos = std.string.indexOf(line, '/');
             if (pos > 0 && _T.trim(line[pos + 1 .. $]) == "32") {
                 line = _T.trim(line[0 .. pos]);
             }
-			return line.idup ;
-		}
+            return line.idup;
+        }
+
         foreach (ref line; file.byLine) {
             line = _T.trim(line);
             if (line.length is 0 || line[0] is ';')
                 continue;
             auto pos = std.string.indexOf(line, ';');
             if (pos > 0) {
-                line = _T.trim(line[0 .. pos]) ;
+                line = _T.trim(line[0 .. pos]);
             }
             if (line.length is 0)
                 continue;
-			switch(line[0]) {
-				case '#':
-                	bypass_rules ~= strip32(line);
-					break;
-				case '!':
-                	redir_rules ~= strip32(line);
-					break;
-				default:
-                	proxy_rules ~= line.idup;
-			}
+            switch (line[0]) {
+            case '#':
+                bypass_rules ~= strip32(line);
+                break;
+            case '!':
+                iRedir.load(strip32(line));
+                break;
+            default:
+                proxy_rules ~= line.idup;
+            }
         }
     }
 
@@ -1050,16 +1143,17 @@ struct _Environment {
         foreach (ref rule; bypass_rules) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
         }
-		foreach(ref rule; redir_rules) {
-            formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
-		}
+        
+        foreach(ref ir; iRedir.list ) {
+            formattedWrite(writer, "ipset add gfwset %s nomatch\n", ir.ip);
+        }
         foreach (ref proxy; free_proxies) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", proxy.server);
         }
 
         auto tcp_proxy_port = default_proxy.local_port;
-        auto udp_proxy_port = udp_proxy.local_port ;
-		
+        auto udp_proxy_port = udp_proxy.local_port;
+
         bool use_udp_forward = false;
         bool use_udp_output = false;
         if (use_udp_forward || use_udp_output) {
@@ -1068,11 +1162,23 @@ struct _Environment {
             }
         }
 
-		foreach(ref rule; redir_rules) {
-            formattedWrite(writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport 80 -j DNAT --to-destination %s:8080\n", rule, rule);
-            formattedWrite(writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport 443 -j DNAT --to-destination %s:8443\n", rule, rule);
-		}
-		
+        foreach(ref ir; iRedir.list ) {
+          if( ir.redirs.length is 0 ) {
+            formattedWrite(
+                writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport 80 -j DNAT --to-destination %s:8080\n",
+                ir.ip, ir.ip);
+            formattedWrite(
+                writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport 443 -j DNAT --to-destination %s:8443\n",
+                ir.ip, ir.ip);
+          } else {
+            foreach(ushort ir_port, ref IP ir_ip; ir.redirs) {
+                formattedWrite(
+                  writer, "iptables -t nat -A prerouting_rule -i br-lan -p tcp -d %s --dport %s -j DNAT --to-destination %s:%s\n",
+                  ir.ip, ir_port,  ir_ip.ip, ir_ip.port);
+            }
+          }
+        }
+        
         formattedWrite(writer, "iptables -t nat -N %s\n", nat_chain);
         formattedWrite(writer,
             "iptables -t nat -A %s -p tcp -m set --match-set gfwset dst -j REDIRECT --to-ports %s\n",
