@@ -278,8 +278,8 @@ struct iRedir {
             break;
           case 2:
             auto pos = std.string.indexOf(_ls[1], '.');
-            if( pos < 0 || pos > _ls[1].length ) {
-              _G.Error("invalid rules:%s can not use ip(%s) without port", line, _ls[1]);
+            if( pos >= 0 && pos < _ls[1].length ) {
+              _G.Error("invalid rules:%s can not use ip(%s) without port.", line, _ls[1]) ;
             }
             auto _ip2 = IP(_ls[1]) ;
             if( _ip2.uport is 0) {
@@ -651,8 +651,8 @@ struct _Environment {
     string[ushort] bind_port_list;
 
     Proxy default_proxy;
-    Proxy udp_proxy;
     Proxy dns_proxy;
+    Proxy udp_proxy;
     Proxy server_proxy;
     Proxy local_proxy;
 
@@ -727,57 +727,7 @@ struct _Environment {
             Error("default node not exists in file: %s", path);
             _G.Exit(__LINE__);
         }
-
-        p = udp_proxy.loadFromJsonValue(Proxy.Type.Redir, "udp", &jRoot, &default_proxy);
-        udp_proxy.name = "udp";
-        udp_proxy.udp_relay = true;
-        udp_proxy.udp_only = true;
-        if (p is null) {
-            udp_proxy.enabled = false;
-            bool has_udp = false;
-            string udp_value = null;
-            auto pUdp = _T.getJsonValue!bool(has_udp, &jRoot, "udp", exists);
-            if (!exists) {
-                // not setting , use default server local port 
-                udp_proxy.local_port = default_proxy.local_port;
-            } else if (pUdp is null || pUdp.type !is JSON_TYPE.STRING) {
-                if (has_udp) {
-                    // use default server local port 
-                    udp_proxy.local_port = default_proxy.local_port;
-                } else {
-                    use_tproxy = false;
-                }
-            } else if (pUdp.type is JSON_TYPE.STRING) {
-                _T.getJsonValue!string(udp_value, &jRoot, "udp", exists);
-                if (exists && udp_value !is null && udp_value.length > 1) {
-                    auto udp_ip = IP(udp_value);
-                    if ("0.0.0.0" == udp_ip.ip) {
-                        udp_proxy.server = default_proxy.server;
-                    } else {
-                        udp_proxy.server = udp_ip.ip;
-                    }
-                    if (udp_ip.uport is 0) {
-                        udp_proxy.server_port = default_proxy.server_port;
-                    } else {
-                        udp_proxy.server_port = udp_ip.uport;
-                    }
-                } else {
-                    udp_value = null;
-                }
-            }
-            if (udp_value) {
-                udp_proxy.local_address = "0.0.0.0";
-                udp_proxy.local_port = 1055;
-                udp_proxy.method = default_proxy.method;
-                udp_proxy.password = default_proxy.password;
-                udp_proxy.auth = default_proxy.auth;
-                udp_proxy.timeout = default_proxy.timeout;
-                udp_proxy.verbose = default_proxy.verbose;
-                udp_proxy.fast_open = default_proxy.fast_open;
-                udp_proxy.enabled = true;
-            }
-        }
-
+        
         p = dns_proxy.loadFromJsonValue(Proxy.Type.Dns, "dns", &jRoot, &default_proxy);
         dns_proxy.udp_relay = true;
         if (p is null) {
@@ -823,6 +773,57 @@ struct _Environment {
                 }
             }
         }
+        
+        p = udp_proxy.loadFromJsonValue(Proxy.Type.Redir, "udp", &jRoot, &dns_proxy);
+        udp_proxy.name = "udp";
+        udp_proxy.udp_relay = true;
+        udp_proxy.udp_only = true;
+        if (p is null) {
+            udp_proxy.enabled = false;
+            bool has_udp = false;
+            string udp_value = null;
+            auto pUdp = _T.getJsonValue!bool(has_udp, &jRoot, "udp", exists);
+            if (!exists) {
+                // not setting , use dns local port 
+                udp_proxy.local_port = dns_proxy.local_port ;
+            } else if (pUdp is null || pUdp.type !is JSON_TYPE.STRING) {
+                if (has_udp) {
+                    // use dns local port 
+                    udp_proxy.local_port = dns_proxy.local_port;
+                } else {
+                    use_tproxy = false;
+                }
+            } else if (pUdp.type is JSON_TYPE.STRING) {
+                _T.getJsonValue!string(udp_value, &jRoot, "udp", exists);
+                if (exists && udp_value !is null && udp_value.length > 1) {
+                    auto udp_ip = IP(udp_value);
+                    if ("0.0.0.0" == udp_ip.ip) {
+                        udp_proxy.server = dns_proxy.server;
+                    } else {
+                        udp_proxy.server = udp_ip.ip;
+                    }
+                    if (udp_ip.uport is 0) {
+                        udp_proxy.server_port = dns_proxy.server_port;
+                    } else {
+                        udp_proxy.server_port = udp_ip.uport;
+                    }
+                } else {
+                    udp_value = null;
+                }
+            }
+            if (udp_value) {
+                udp_proxy.local_address = "0.0.0.0";
+                udp_proxy.local_port = 1055;
+                udp_proxy.method = dns_proxy.method;
+                udp_proxy.password = dns_proxy.password;
+                udp_proxy.auth = dns_proxy.auth;
+                udp_proxy.timeout = dns_proxy.timeout;
+                udp_proxy.verbose = dns_proxy.verbose;
+                udp_proxy.fast_open = dns_proxy.fast_open;
+                udp_proxy.enabled = true;
+            }
+        }
+        
         p = server_proxy.loadFromJsonValue(Proxy.Type.Server, "server", &jRoot, &default_proxy);
         if (p is null) {
             bool has_server = false;
