@@ -1137,8 +1137,9 @@ struct _Environment {
             	Exec("iptables -t nat -F " ~ udp_chain, false);
 			}
             Exec("iptables -t nat -F " ~ nat_chain, false);
-            Exec("iptables -t mangle -F " ~ tproxy_chain, false);
-			
+			if( use_tproxy ) {
+            	Exec("iptables -t mangle -F " ~ tproxy_chain, false);
+			}
             Exec("iptables -t filter -F forwarding_rule", false);
             Exec("iptables -t nat -F prerouting_rule", false);
             Exec("iptables -t nat -F zone_lan_prerouting", false);
