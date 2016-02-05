@@ -15,6 +15,14 @@ void main(string[] args){
 	if( maxconn < 128 || maxconn > 20480 ) {
 		maxconn	= 1024 * 8 ;
 	}
+	auto weight = "" ;
+	if( args.length > 4 ) {
+		auto _weight	= to!int(args[4]);
+		if( _weight > 0 && _weight < 100 ) {
+			weight	= " weight " ~ to!string(_weight);
+		}
+	}
+	
 	auto ips = split(args[1], ',') ;
 	auto ports = split(args[2], ',') ;
 	
@@ -22,7 +30,7 @@ void main(string[] args){
 	foreach(port; ports){
 		foreach(int i, ref ip; ips){
 			index++ ;
-			writefln("   server server%d_%s %s:%s maxconn %d weight 1", i, index,  ip, port, maxconn);
+			writefln("   server server%d_%s %s:%s maxconn %d%s", i, index,  ip, port, maxconn, weight);
 		}
 	}
 }

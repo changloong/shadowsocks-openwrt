@@ -334,6 +334,7 @@ struct Proxy {
 
     bool enabled = true;
     bool udp_only = false;
+    bool is_lazy_proxy = false;
 
     void loadFromiFree(string name, string ip, string port, string method, string psword,
         ushort local_port, Proxy* local) {
@@ -348,6 +349,7 @@ struct Proxy {
         this.verbose = local.verbose;
         this.fast_open = local.fast_open;
         this.udp_relay = local.udp_relay;
+		this.is_lazy_proxy	= true ;
     }
 
     const(JSONValue)* loadFromJsonValue(Type _type, string _name, const(JSONValue)* pParent,
@@ -638,7 +640,6 @@ struct _Environment {
     string wan_name;
 
     bool adbyby_enable;
-    bool ishadowsocks_enable;
     bool force_reload = false;
     bool verbose = false;
     IP adbyby_ip;
@@ -715,10 +716,6 @@ struct _Environment {
         enforce(jRoot.type is JSON_TYPE.OBJECT);
         bool exists;
         _T.getJsonValue!bool(adbyby_enable, &jRoot, "adbyby", exists);
-        _T.getJsonValue!bool(ishadowsocks_enable, &jRoot, "ishadowsocks", exists);
-        if (!exists) {
-            _T.getJsonValue!bool(ishadowsocks_enable, &jRoot, "ifree", exists);
-        }
         if (adbyby_enable) {
             _adbyby_init;
         }
@@ -975,10 +972,6 @@ struct _Environment {
             _G.Exit(__LINE__);
         }
 
-        if (!force_reload) {
-            stop(true);
-        }
-
         free_proxies.length = 0;
 
         ushort local_port = 7000;
@@ -1026,13 +1019,11 @@ struct _Environment {
 
     void InitPorc(bool _lazy = false) {
         if (_lazy) {
-            if (ishadowsocks_enable) {
-                tryGetFreeServer();
-                foreach (ref proxy; free_proxies) {
-                    proxy.initProcess(lazy_proc);
-                    if (_G.verbose) {
-                        proxy.dump;
-                    }
+            tryGetFreeServer();
+            foreach (ref proxy; free_proxies) {
+                proxy.initProcess(lazy_proc);
+                if (_G.verbose) {
+                    proxy.dump;
                 }
             }
         } else {
@@ -1052,18 +1043,20 @@ struct _Environment {
 
     void stop(bool _lazy = false) {
         foreach (ref proc; _lazy ? lazy_proc : base_proc) {
+			if( _G.verbose ) {
+				writefln(">>> stop: pid=%s,%s , _G.force_reload=%s", proc.pid_file, proc.pid_file.exists, _G.force_reload);
+			}
             if (proc.pid_file.exists) {
-                string cmd = "kill `cat " ~ proc.pid_file ~ "`";
-                Exec(cmd, false);
-                Thread.sleep(dur!("msecs")(10));
+				if( !_G.force_reload ) {
+	                string cmd = "kill `cat " ~ proc.pid_file ~ "`";
+	                Exec(cmd, false);
+	                Thread.sleep(dur!("msecs")(10));
+				}
                 if (proc.pid_file.exists)
                     std.file.remove(proc.pid_file);
             }
         }
-
-        if (!_lazy) {
-            iptable(false, true);
-        }
+        firewall(true, _lazy);
     }
 
     void start(bool _lazy = false) {
@@ -1075,12 +1068,46 @@ struct _Environment {
                 Exec(proc.cmd, false, true);
             }
         }
-        if (!_lazy) {
-            iptable(true, false);
-        }
+		firewall(false, _lazy);
     }
 
-    void iptable(bool load, bool flush) {
+    void firewall(bool _flush, bool _lazy) {
+        auto writer = appender!string();
+        static string ipath = "/tmp/svpn_ifree.sh" ;
+		if( _lazy ) {
+			if( _flush ) {
+	            if (ipath.exists) {
+                	writefln(">>>: flush lazy firewall");
+		            Exec("/bin/sh " ~ ipath, false);
+	                std.file.remove(ipath);
+				} else {
+                	writefln(">>>: skip flush lazy firewall");
+				}
+			} else {
+	            writefln(">>>: load lazy firewall");
+				foreach(ref proc;lazy_proc) {
+			        formattedWrite(writer, "[ -f %s ] && kill `cat %s`\n", proc.pid_file, proc.pid_file);
+			        formattedWrite(writer, "rm -rf %s\n", proc.pid_file);
+				}
+		        foreach (ref proxy; free_proxies) {
+					if( proxy.is_lazy_proxy ){
+			        	formattedWrite(writer, "#ip=%s\n", proxy.server);
+						Exec( `/bin/sh -c "ipset add gfwset ` ~ proxy.server ~ ` nomatch" || echo 1` , false);
+					}
+		        }
+	            std.file.write(ipath, writer.data);
+			}
+			return ;
+		}
+		
+        bool use_udp_forward = false;
+        bool use_udp_output = false;
+        if (use_udp_forward || use_udp_output) {
+            if (use_udp_forward && use_udp_output) {
+                _G.Error("error");
+            }
+        }
+		
         static string path = "/tmp/svpn_shell.sh";
         static string forward_chain = "SVPN_FORWARD";
         static string nat_chain = "SVPN_NAT";
@@ -1105,10 +1132,13 @@ struct _Environment {
             if (proxy_flushed) {
                 return;
             }
-            Exec("iptables -t filter -F " ~ forward_chain, false);
+			if( use_udp_forward || use_udp_output ) {
+	            Exec("iptables -t filter -F " ~ forward_chain, false);
+            	Exec("iptables -t nat -F " ~ udp_chain, false);
+			}
             Exec("iptables -t nat -F " ~ nat_chain, false);
-            Exec("iptables -t nat -F " ~ udp_chain, false);
             Exec("iptables -t mangle -F " ~ tproxy_chain, false);
+			
             Exec("iptables -t filter -F forwarding_rule", false);
             Exec("iptables -t nat -F prerouting_rule", false);
             Exec("iptables -t nat -F zone_lan_prerouting", false);
@@ -1124,17 +1154,14 @@ struct _Environment {
             proxy_flushed = true;
         }
 
-        if (!load) {
-            if (flush) {
-                writefln(">>>: flush iptables");
-                do_flush();
-                if (path.exists)
-                    std.file.remove(path);
-            }
+        if (_flush) {
+            writefln(">>>: flush iptables");
+            do_flush();
+            if (path.exists)
+                std.file.remove(path);
             return;
         }
 
-        auto writer = appender!string();
         formattedWrite(writer, "ipset create gfwset hash:net\n");
         foreach (ref rule; proxy_rules) {
             formattedWrite(writer, "ipset add gfwset %s\n", rule);
@@ -1149,19 +1176,13 @@ struct _Environment {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", ir.ip);
         }
         foreach (ref proxy; free_proxies) {
-            formattedWrite(writer, "ipset add gfwset %s nomatch\n", proxy.server);
+			if( !proxy.is_lazy_proxy ){
+	            formattedWrite(writer, "ipset add gfwset %s nomatch\n", proxy.server);
+			}
         }
 
         auto tcp_proxy_port = default_proxy.local_port;
         auto udp_proxy_port = udp_proxy.local_port;
-
-        bool use_udp_forward = false;
-        bool use_udp_output = false;
-        if (use_udp_forward || use_udp_output) {
-            if (use_udp_forward && use_udp_output) {
-                _G.Error("error");
-            }
-        }
 
         foreach(ref ir; iRedir.list ) {
           if( ir.redirs.length is 0 ) {
@@ -1254,13 +1275,13 @@ void main(string args[]) {
     int force = 0;
     int verbose = 0;
     foreach (ref argv; args[1 .. $]) {
-        if ("-f" == argv || "--free" == argv) {
+        if ("-i" == argv || "--free" == argv  || "--ifree" == argv) {
             free = 1;
         }
         if ("-v" == argv || "--verbose" == argv) {
             verbose = 1;
         }
-        if ("--force" == argv) {
+        if ("--force" == argv || "-f" == argv ) {
             force = 1;
         }
         if ("--start" == argv) {
@@ -1284,48 +1305,49 @@ void main(string args[]) {
             start = 0;
     }
 
-    if (free > 0) {
-        _G.ishadowsocks_enable = true;
-    }
     if (force) {
         _G.force_reload = true;
     }
     _G.verbose = verbose ? true : false;
+	
+	if( verbose ) {
+		writefln("start=%s, stop=%s, free=%s, force=%s", start, stop, free, force);
+	}
 
     _G.Init;
     _G.InitPorc;
 
-    if (free <= 0 || force) {
+    if ( force ) {
         if (stop > 0) {
+          _G.Exec("killall -9 ss-redir", false);
+          _G.Exec("killall -9 ss-redir-udp", false);
+          _G.Exec("killall -9 ss-tunnel", false);
+          _G.Exec("killall -9 ss-server", false);
+          _G.Exec("killall -9 ss-local", false);
+          _G.Exec("killall -9 adbyby", false);
+          Thread.sleep(dur!("msecs")(50));
+        }
+	} 
+	
+	if( !free ){
+        if ( stop > 0 ) {
             _G.stop;
             Thread.sleep(dur!("msecs")(50));
-            if (force) {
-                _G.Exec("killall -9 ss-redir", false);
-                _G.Exec("killall -9 ss-tunnel", false);
-                _G.Exec("killall -9 ss-server", false);
-                _G.Exec("killall -9 ss-local", false);
-                _G.Exec("killall -9 adbyby", false);
-                Thread.sleep(dur!("msecs")(150));
-            }
-        }
+		}
         if (start > 0) {
             _G.start;
-            Thread.sleep(dur!("msecs")(150));
         }
-    }
+	}
 
-    if (_G.ishadowsocks_enable) {
-        _G.InitPorc(true);
-        Thread.sleep(dur!("msecs")(150));
-        if (stop > 0) {
+    if ( free ) {
+        if ( stop > 0 ) {
             _G.stop(true);
-            Thread.sleep(dur!("msecs")(150));
+            Thread.sleep(dur!("msecs")(50));
         }
+        _G.InitPorc(true);
+        Thread.sleep(dur!("msecs")(50));
         if (start > 0) {
             _G.start(true);
-            Thread.sleep(dur!("msecs")(150));
         }
-        _G.iptable(true, true);
     }
-
 }
