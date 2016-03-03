@@ -628,7 +628,11 @@ struct Proxy {
         }
         std.file.write(path, j.toString());
         _cmd ~= " -f " ~ pid ~ " >" ~ log ~ " 2>&1 &";
-        pool ~= new iProcess(cmd ~ _cmd, pid, log);
+		_cmd = cmd ~ _cmd ;
+        if (type is Type.Server || type is Type.Client) {
+	        _cmd = "sudo -u " ~ _G.sudo_user ~ " -H " ~ _cmd ;
+		}
+        pool ~= new iProcess(_cmd, pid, log);
     }
 }
 
@@ -638,6 +642,7 @@ struct _Environment {
     string lan_ip;
     string lan_netmask;
     string wan_name;
+	string sudo_user = "ftp" ;
 
     bool adbyby_enable;
     bool force_reload = false;
