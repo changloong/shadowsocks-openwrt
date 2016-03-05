@@ -1180,10 +1180,10 @@ struct _Environment {
         foreach (ref rule; bypass_rules) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
         }
-        /*
         foreach(ref ir; iRedir.list ) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", ir.ip);
         }
+		/*
         foreach (ref proxy; free_proxies) {
 			if( !proxy.is_lazy_proxy ){
 	            formattedWrite(writer, "ipset add gfwset %s nomatch\n", proxy.server);
