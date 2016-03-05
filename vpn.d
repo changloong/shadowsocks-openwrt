@@ -335,6 +335,7 @@ struct Proxy {
     bool enabled = true;
     bool udp_only = false;
     bool is_lazy_proxy = false;
+    bool sudo  = false ;
 
     void loadFromiFree(string name, string ip, string port, string method, string psword,
         ushort local_port, Proxy* local) {
@@ -349,7 +350,7 @@ struct Proxy {
         this.verbose = local.verbose;
         this.fast_open = local.fast_open;
         this.udp_relay = local.udp_relay;
-		this.is_lazy_proxy	= true ;
+        this.is_lazy_proxy	= true ;
     }
 
     const(JSONValue)* loadFromJsonValue(Type _type, string _name, const(JSONValue)* pParent,
@@ -628,10 +629,10 @@ struct Proxy {
         }
         std.file.write(path, j.toString());
         _cmd ~= " -f " ~ pid ~ " >" ~ log ~ " 2>&1 &";
-		_cmd = cmd ~ _cmd ;
-        if (type is Type.Server || type is Type.Client) {
+        _cmd = cmd ~ _cmd ;
+        if ( sudo ) {
 	        _cmd = "sudo -u " ~ _G.sudo_user ~ " -H " ~ _cmd ;
-		}
+        }
         pool ~= new iProcess(_cmd, pid, log);
     }
 }
@@ -642,7 +643,7 @@ struct _Environment {
     string lan_ip;
     string lan_netmask;
     string wan_name;
-	string sudo_user = "ftp" ;
+	  string sudo_user = "ftp" ;
 
     bool adbyby_enable;
     bool force_reload = false;
@@ -827,6 +828,7 @@ struct _Environment {
         }
         
         p = server_proxy.loadFromJsonValue(Proxy.Type.Server, "server", &jRoot, &default_proxy);
+        server_proxy.sudo = true ;
         if (p is null) {
             bool has_server = false;
             _T.getJsonValue!bool(has_server, &jRoot, "server", exists);
@@ -846,6 +848,7 @@ struct _Environment {
             }
         }
         p = local_proxy.loadFromJsonValue(Proxy.Type.Client, "local", &jRoot, &default_proxy);
+        local_proxy.sudo = true ;
         if (p is null) {
             bool has_local = false;
             _T.getJsonValue!bool(has_local, &jRoot, "local", exists);
@@ -1048,11 +1051,11 @@ struct _Environment {
 
     void stop(bool _lazy = false) {
         foreach (ref proc; _lazy ? lazy_proc : base_proc) {
-			if( _G.verbose ) {
-				writefln(">>> stop: pid=%s,%s , _G.force_reload=%s", proc.pid_file, proc.pid_file.exists, _G.force_reload);
-			}
-            if (proc.pid_file.exists) {
-				if( !_G.force_reload ) {
+        if( _G.verbose ) {
+          writefln(">>> stop: pid=%s,%s , _G.force_reload=%s", proc.pid_file, proc.pid_file.exists, _G.force_reload);
+        }
+        if (proc.pid_file.exists) {
+          if( !_G.force_reload ) {
 	                string cmd = "kill `cat " ~ proc.pid_file ~ "`";
 	                Exec(cmd, false);
 	                Thread.sleep(dur!("msecs")(10));
@@ -1177,7 +1180,7 @@ struct _Environment {
         foreach (ref rule; bypass_rules) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
         }
-        
+        /*
         foreach(ref ir; iRedir.list ) {
             formattedWrite(writer, "ipset add gfwset %s nomatch\n", ir.ip);
         }
@@ -1186,6 +1189,7 @@ struct _Environment {
 	            formattedWrite(writer, "ipset add gfwset %s nomatch\n", proxy.server);
 			}
         }
+		*/
 
         auto tcp_proxy_port = default_proxy.local_port;
         auto udp_proxy_port = udp_proxy.local_port;
@@ -1236,7 +1240,7 @@ struct _Environment {
         }
 
         if (use_output) {
-            formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p tcp -j %s\n", nat_chain);
+            formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p tcp -m owner --uid-owner %s -j %s\n", _G.sudo_user, nat_chain);
             if (use_udp_output) {
                 formattedWrite(writer, "iptables -t nat -I OUTPUT 1 -p udp -j %s\n", udp_chain);
             }
