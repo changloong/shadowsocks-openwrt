@@ -960,11 +960,11 @@ struct _Environment {
 
     void tryGetFreeServer() {
         string path = "/tmp/ifree_proxy_cache.html";
-        string url = `http://www.ishadowsocks.com/`;
+        string url = `http://www.ishadowsocks.net/`;
         if (path.exists) {
             std.file.remove(path);
         }
-        _G.Exec("curl -o " ~ path ~ " " ~ url, true);
+        _G.Exec("curl -L -o " ~ path ~ " " ~ url, true);
         if (!path.exists) {
             writefln("curl(%s) %s not exists!", url, path);
             return;
