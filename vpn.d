@@ -1170,19 +1170,43 @@ struct _Environment {
                 std.file.remove(path);
             return;
         }
+		
+		bool nomatch(bool delegate(string) dg){
+			foreach (ref rule; bypass_rules) {
+				if( dg(rule) ) {
+					return true;
+				};
+			}
+			foreach(ref ir; iRedir.list ) {
+				if( dg(ir.ip) ) {
+					return true;
+				};
+			}
+			return false ;
+		}
 
         formattedWrite(writer, "ipset create gfwset hash:net\n");
+		bool[string] nomatch_skiped ;
         foreach (ref rule; proxy_rules) {
+			if(nomatch((string subnet){
+				if( subnet == rule ) {
+					nomatch_skiped[subnet] = true ;
+					return true ;
+				}
+				return false ;
+			})) {
+				continue ;
+			}
             formattedWrite(writer, "ipset add gfwset %s\n", rule);
         }
         formattedWrite(writer, "ipset add gfwset 127.0.0.1/8 nomatch\n");
         formattedWrite(writer, "ipset add gfwset %s/24 nomatch\n", lan_ip);
-        foreach (ref rule; bypass_rules) {
-            formattedWrite(writer, "ipset add gfwset %s nomatch\n", rule);
-        }
-        foreach(ref ir; iRedir.list ) {
-            formattedWrite(writer, "ipset add gfwset %s nomatch\n", ir.ip);
-        }
+		nomatch((string subnet){
+			if( !(subnet in nomatch_skiped) ) {
+	            formattedWrite(writer, "ipset add gfwset %s nomatch\n", subnet);
+			}
+			return false;
+		});
 		/*
         foreach (ref proxy; free_proxies) {
 			if( !proxy.is_lazy_proxy ){
@@ -1190,7 +1214,6 @@ struct _Environment {
 			}
         }
 		*/
-
         auto tcp_proxy_port = default_proxy.local_port;
         auto udp_proxy_port = udp_proxy.local_port;
 
