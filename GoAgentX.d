@@ -43,11 +43,12 @@ void check(ref string[] args){
 				if( "table" == method.str ) {
 					args	~= ss_method ;
 					args	~= ss_method_chacha20 ;
+					has_one_time_auth	= true ;
 				}
 			}
 		}
 	}
-	if( !has_one_time_auth ) {
+	if( has_one_time_auth ) {
 		args ~= one_time_auth ;
 	}
 	if( !has_verbose_mode ) {
