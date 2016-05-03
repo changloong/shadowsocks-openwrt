@@ -317,9 +317,9 @@ struct Proxy {
     string name;
 
     string server;
-    short server_port = 0;
+    ushort server_port = 0;
     string local_address = "0.0.0.0";
-    short local_port = 0;
+    ushort local_port = 0;
 
     string password;
     string method = "aes-128-cfb";
@@ -365,7 +365,7 @@ struct Proxy {
             return null;
         }
         bool exists;
-        _T.getJsonValue!short(server_port, pJson, "server_port", exists);
+        _T.getJsonValue!ushort(server_port, pJson, "server_port", exists);
         if (exists) {
             _T.getJsonValue!string(server, pJson, "server", exists);
             if (!exists) {
@@ -415,7 +415,7 @@ struct Proxy {
             _G.Exit(__LINE__);
         }
 
-        _T.getJsonValue!short(local_port, pJson, "local_port", exists);
+        _T.getJsonValue!ushort(local_port, pJson, "local_port", exists);
         if (exists) {
             _T.getJsonValue!string(local_address, pJson, "local_address", exists);
             if (!exists) {
