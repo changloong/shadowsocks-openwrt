@@ -239,11 +239,13 @@ struct iProcess {
     string cmd;
     string pid_file;
     string log_file;
+	string stop_cmd;
 
-    this(string c, string p, string l) {
+    this(string c, string p, string l, string k = null) {
         cmd = c;
         pid_file = p;
         log_file = l;
+		stop_cmd = k;
     }
 }
 
@@ -1043,27 +1045,31 @@ struct _Environment {
             if (adbyby_enable) {
                 string log = "/tmp/log/adbyby.log";
                 string pid = "/tmp/run/adbyby.pid";
-                string cmd = etc_dir ~ "/adbyby --no-daemon --pidfile " ~ pid ~ " --user nobody.nogroup > " ~ log ~ " 2>&1 & ";
-                base_proc ~= new iProcess(cmd, pid, log);
+                string cmd = "sudo -u nobody -g nogroup  -H " ~ etc_dir ~ "/adbyby --no-daemon > " ~ log ~ " 2>&1 & ";
+                base_proc ~= new iProcess(cmd, pid, log, "killall adbyby");
             }
         }
     }
 
     void stop(bool _lazy = false) {
         foreach (ref proc; _lazy ? lazy_proc : base_proc) {
-        if( _G.verbose ) {
-          writefln(">>> stop: pid=%s,%s , _G.force_reload=%s", proc.pid_file, proc.pid_file.exists, _G.force_reload);
-        }
-        if (proc.pid_file.exists) {
-          if( !_G.force_reload ) {
+        	if( _G.verbose ) {
+          	  writefln(">>> stop: pid=%s,%s , _G.force_reload=%s", proc.pid_file, proc.pid_file.exists, _G.force_reload);
+        	}
+        	if (proc.pid_file.exists) {
+                if( !_G.force_reload ) {
 	                string cmd = "kill `cat " ~ proc.pid_file ~ "`";
 	                Exec(cmd, false);
 	                Thread.sleep(dur!("msecs")(10));
 				}
                 if (proc.pid_file.exists)
                     std.file.remove(proc.pid_file);
-            }
-        }
+            } else {
+				if( proc.stop_cmd !is null) {
+					Exec(proc.stop_cmd, false);
+				}
+			}
+		}
         firewall(true, _lazy);
     }
 
