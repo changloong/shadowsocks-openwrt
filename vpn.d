@@ -325,7 +325,7 @@ struct Proxy {
     string method = "aes-128-cfb";
     bool auth = false;
 
-    byte timeout = 45;
+    ushort timeout = 45;
     bool verbose = true;
     bool fast_open = false;
     bool udp_relay = true;
@@ -503,7 +503,7 @@ struct Proxy {
         if (!exists && _default) {
             method = _default.method;
         }
-        _T.getJsonValue!byte(timeout, pJson, "timeout", exists);
+        _T.getJsonValue!ushort(timeout, pJson, "timeout", exists);
         if (!exists && _default) {
             timeout = _default.timeout;
         }
