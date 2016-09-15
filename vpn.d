@@ -24,8 +24,13 @@ struct IP {
             u32 = std.socket.InternetAddress.parse(s[0 .. pos]);
             port = std.conv.to!string(uport);
         } else {
-            uport = std.conv.to!ushort(s);
-            port = std.conv.to!string(uport);
+			pos = std.string.indexOf(s, '.');
+			if( pos < 0 ) {
+	            uport = std.conv.to!ushort(s);
+	            port = std.conv.to!string(uport);
+			} else {
+	            u32 = std.socket.InternetAddress.parse(s);
+			}
         }
         ip = std.socket.InternetAddress.addrToString(u32);
 
