@@ -13,7 +13,7 @@ struct IP {
     uint u32;
     ushort uport;
     this(string s) {
-        int pos = std.string.indexOf(s, ':');
+        auto pos = std.string.indexOf(s, ':');
         if (pos is 0) {
             uport = std.conv.to!ushort(_T.ltrim(s, ':'));
             u32 = std.socket.InternetAddress.parse(this.ip);
@@ -45,7 +45,7 @@ struct Section {
             line = _T.trim(line);
             if (line.length is 0)
                 continue;
-            int pos = std.string.indexOf(line, ';');
+            auto pos = std.string.indexOf(line, ';');
             if (pos is 0)
                 continue;
             if (pos > 0) {
@@ -141,7 +141,7 @@ struct _T {
     }
 
     static string find2(ref string str, string from, string to) {
-        int pos = std.string.indexOf(str, from);
+        auto pos = std.string.indexOf(str, from);
         if (pos < 0) {
             return null;
         }
@@ -526,11 +526,11 @@ struct Proxy {
         if (type is Type.Server) {
             _T.getJsonValue!string(nameserver, pJson, "nameserver", exists);
             if (!exists) {
-                nameserver = "127.0.0.1:53";
+                nameserver = "127.0.0.1";
             } else {
                 auto ip = IP(nameserver);
-                if (ip.uport is 0) {
-                    nameserver = ip.ip ~ ":53";
+                if (ip.uport is 0 || ip.uport is 53) {
+                    nameserver = ip.ip ;
                 } else {
                     nameserver = ip.ip ~ ":" ~ ip.port;
                 }
@@ -539,11 +539,11 @@ struct Proxy {
         if (type is Type.Dns) {
             _T.getJsonValue!string(nameserver, pJson, "nameserver", exists);
             if (!exists) {
-                nameserver = "8.8.8.8:53";
+                nameserver = "8.8.8.8";
             } else {
                 auto ip = IP(nameserver);
-                if (ip.uport is 0) {
-                    nameserver = ip.ip ~ ":53";
+                if (ip.uport is 0 || ip.uport is 53) {
+                    nameserver = ip.ip ;
                 } else {
                     nameserver = ip.ip ~ ":" ~ ip.port;
                 }
@@ -750,8 +750,8 @@ struct _Environment {
                 _T.getJsonValue!string(dns_value, &jRoot, "dns", exists);
                 if (exists && dns_value !is null && dns_value.length > 1) {
                     auto dns_ip = IP(dns_value);
-                    if (dns_ip.uport is 0) {
-                        dns_value = dns_ip.ip ~ ":53";
+                    if (dns_ip.uport is 0 || dns_ip.uport is 53) {
+                        dns_value = dns_ip.ip ;
                     } else {
                         dns_value = dns_ip.ip ~ ":" ~ dns_ip.port;
                     }
@@ -774,7 +774,7 @@ struct _Environment {
                 if (dns_value) {
                     dns_proxy.nameserver = dns_value;
                 } else {
-                    dns_proxy.nameserver = "8.8.8.8:53";
+                    dns_proxy.nameserver = "8.8.8.8";
                 }
             }
         }
@@ -846,7 +846,7 @@ struct _Environment {
                 server_proxy.verbose = default_proxy.verbose;
                 server_proxy.fast_open = default_proxy.fast_open;
                 server_proxy.udp_relay = true;
-                server_proxy.nameserver = _G.lan_ip ~ ":53";
+                server_proxy.nameserver = _G.lan_ip ;
             }
         }
         p = local_proxy.loadFromJsonValue(Proxy.Type.Client, "local", &jRoot, &default_proxy);
