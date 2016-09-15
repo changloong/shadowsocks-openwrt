@@ -47,6 +47,11 @@ void check(ref string[] args){
 					args    ~= "0.0.0.0" ;
 					has_one_time_auth	= true ;
 				}
+				if( "aes-128-cfb" == method.str ) {
+					args    ~= "-b" ;
+					args    ~= "0.0.0.0" ;
+					has_one_time_auth	= true ;
+				}
 			}
 		}
 	}
