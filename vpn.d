@@ -614,9 +614,11 @@ struct Proxy {
                 _cmd ~= " -u";
             }
         }
-        if (fast_open) {
-            _cmd ~= " --fast-open";
-        }
+		if (type !is Type.Redir) {
+	        if (fast_open) {
+	            _cmd ~= " --fast-open";
+	        }
+		}
         if (type is Type.Redir) {
             if ("udp" == name) {
                 cmd = "ss-redir-udp";
