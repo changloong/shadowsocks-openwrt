@@ -343,7 +343,18 @@ struct Proxy {
     bool udp_only = false;
     bool is_lazy_proxy = false;
     bool sudo  = false ;
-
+	
+	bool ssr	= false ;
+	bool dns_ipv6	= false ;
+	bool connect_verbose_info = false ;
+	string protocol = "auth_sha1_v4" ;
+	string protocol_param = "" ;
+	string obfs = "http_simple" ;
+	string obfs_param = "" ;
+	string redirect = "" ;
+	
+	string bin = "" ;
+	
     void loadFromiFree(string name, string ip, string port, string method, string psword,
         ushort local_port, Proxy* local) {
         this.type = Type.Client;
@@ -483,7 +494,7 @@ struct Proxy {
                 }
             }
         }
-
+		
         _T.getJsonValue!string(password, pJson, "password", exists);
         if (!exists) {
             _T.getJsonValue!string(password, pJson, "pass", exists);
@@ -554,7 +565,45 @@ struct Proxy {
                 }
             }
         }
-
+		
+        _T.getJsonValue!string(bin, pJson, "bin", exists);
+		
+        _T.getJsonValue!bool(ssr, pJson, "ssr", exists);
+		if( !exists && _default ) {
+			ssr	= _default.ssr ;
+		}
+		if (!ssr) {
+			return pJson ;
+		}
+		
+        _T.getJsonValue!bool(dns_ipv6, pJson, "dns_ipv6", exists);
+		if( !exists && _default ) {
+			dns_ipv6	= _default.dns_ipv6 ;
+		}
+        _T.getJsonValue!bool(connect_verbose_info, pJson, "connect_verbose_info", exists);
+		if( !exists && _default ) {
+			connect_verbose_info	= _default.connect_verbose_info ;
+		}
+        _T.getJsonValue!string(protocol, pJson, "protocol", exists);
+		if( !exists && _default ) {
+			protocol	= _default.protocol ;
+		}
+        _T.getJsonValue!string(protocol_param, pJson, "protocol_param", exists);
+		if( !exists && _default ) {
+			protocol_param	= _default.protocol_param ;
+		}
+        _T.getJsonValue!string(obfs, pJson, "obfs", exists);
+		if( !exists && _default ) {
+			obfs	= _default.obfs ;
+		}
+        _T.getJsonValue!string(obfs_param, pJson, "obfs_param", exists);
+		if( !exists && _default ) {
+			obfs_param	= _default.obfs_param ;
+		}
+        _T.getJsonValue!string(redirect, pJson, "redirect", exists);
+		if( !exists && _default ) {
+			redirect	= _default.redirect ;
+		}
         return pJson;
     }
 
@@ -591,7 +640,6 @@ struct Proxy {
         string log = "/tmp/log/svpn-" ~ name ~ ".log";
         string pid = "/tmp/run/svpn-" ~ name ~ ".pid";
         string path = "/tmp/etc/svpn-" ~ name ~ ".json";
-        string cmd;
         string _cmd = "";
         _cmd ~= " -c " ~ path;
         JSONValue j = ["server" : server, "method" : method, "password" : password];
@@ -607,6 +655,25 @@ struct Proxy {
         j["udp_relay"] = udp_relay;
         j["auth"] = auth;
 
+		if (type !is Type.Redir) {
+	        if (fast_open) {
+	            j["fast_open"] = true ;
+	        }
+		}
+		
+		if( ssr ) {
+			j["protocol"] = protocol ;
+			j["protocol_param"] = protocol_param ;
+			j["obfs"] = obfs ;
+			j["obfs_param"] = obfs_param ;
+			j["redirect"] = redirect ;
+			j["dns_ipv6"] = dns_ipv6 ;
+			j["connect_verbose_info"] = connect_verbose_info ;
+		}
+
+		if (type is Type.Dns) {
+            _cmd ~= " -L " ~ nameserver ;
+		}
         if (udp_relay) {
             if (udp_only) {
                 _cmd ~= " -U";
@@ -614,31 +681,28 @@ struct Proxy {
                 _cmd ~= " -u";
             }
         }
-		if (type !is Type.Redir) {
-	        if (fast_open) {
-	            _cmd ~= " --fast-open";
+		if( !bin || bin.length is 0 ) {
+			string bin_prefix = "ss" ;
+			if( ssr ) {
+				bin_prefix	= "ssr" ;
+			}
+	        if (type is Type.Redir) {
+				if ("udp" == name) {
+					bin = bin_prefix ~ "-redir-udp";
+				} else {
+		            bin = bin_prefix ~ "-redir";
+				}
+	        } else if (type is Type.Dns) {
+	            bin = bin_prefix ~ "-tunnel";
+	        } else if (type is Type.Server) {
+	            bin = bin_prefix ~ "-server";
+	        } else if (type is Type.Client) {
+	            bin = bin_prefix ~ "-local";
 	        }
 		}
-        if (type is Type.Redir) {
-            if ("udp" == name) {
-                cmd = "ss-redir-udp";
-            } else {
-                cmd = "ss-redir";
-            }
-        } else if (type is Type.Dns) {
-            cmd = "ss-tunnel";
-            _cmd ~= " -L " ~ nameserver;
-        } else if (type is Type.Server) {
-            cmd = "ss-server";
-            /*
-				_cmd  ~= " --acl local.acl" ;
-			*/
-        } else if (type is Type.Client) {
-            cmd = "ss-local";
-        }
         std.file.write(path, j.toString());
         _cmd ~= " -f " ~ pid ~ " >" ~ log ~ " 2>&1 &";
-        _cmd = cmd ~ _cmd ;
+        _cmd = bin ~ _cmd ;
         if ( sudo ) {
 	        _cmd = "sudo -u " ~ _G.sudo_user ~ " -H " ~ _cmd ;
         }
@@ -778,6 +842,16 @@ struct _Environment {
                 dns_proxy.timeout = default_proxy.timeout;
                 dns_proxy.verbose = default_proxy.verbose;
                 dns_proxy.fast_open = default_proxy.fast_open;
+
+                dns_proxy.ssr = default_proxy.ssr;
+                dns_proxy.dns_ipv6 = default_proxy.dns_ipv6;
+                dns_proxy.connect_verbose_info = default_proxy.connect_verbose_info;
+                dns_proxy.protocol = default_proxy.protocol;
+                dns_proxy.protocol_param = default_proxy.protocol_param;
+                dns_proxy.obfs = default_proxy.obfs;
+                dns_proxy.obfs_param = default_proxy.obfs_param;
+                dns_proxy.redirect = default_proxy.redirect;
+
                 if (dns_value) {
                     dns_proxy.nameserver = dns_value;
                 } else {
@@ -832,6 +906,7 @@ struct _Environment {
                 udp_proxy.timeout = dns_proxy.timeout;
                 udp_proxy.verbose = dns_proxy.verbose;
                 udp_proxy.fast_open = dns_proxy.fast_open;
+				
                 udp_proxy.enabled = true;
             }
         }
@@ -854,6 +929,16 @@ struct _Environment {
                 server_proxy.fast_open = default_proxy.fast_open;
                 server_proxy.udp_relay = true;
                 server_proxy.nameserver = _G.lan_ip ;
+				
+                server_proxy.ssr = default_proxy.ssr;
+                server_proxy.dns_ipv6 = default_proxy.dns_ipv6;
+                server_proxy.connect_verbose_info = default_proxy.connect_verbose_info;
+                server_proxy.protocol = default_proxy.protocol;
+                server_proxy.protocol_param = default_proxy.protocol_param;
+                server_proxy.obfs = default_proxy.obfs;
+                server_proxy.obfs_param = default_proxy.obfs_param;
+                server_proxy.redirect = default_proxy.redirect;
+				
             }
         }
         p = local_proxy.loadFromJsonValue(Proxy.Type.Client, "local", &jRoot, &default_proxy);
@@ -875,6 +960,16 @@ struct _Environment {
                 local_proxy.verbose = default_proxy.verbose;
                 local_proxy.fast_open = default_proxy.fast_open;
                 local_proxy.udp_relay = default_proxy.udp_relay;
+				
+                local_proxy.ssr = default_proxy.ssr;
+                local_proxy.dns_ipv6 = default_proxy.dns_ipv6;
+                local_proxy.connect_verbose_info = default_proxy.connect_verbose_info;
+                local_proxy.protocol = default_proxy.protocol;
+                local_proxy.protocol_param = default_proxy.protocol_param;
+                local_proxy.obfs = default_proxy.obfs;
+                local_proxy.obfs_param = default_proxy.obfs_param;
+                local_proxy.redirect = default_proxy.redirect;
+				
             }
         }
 
