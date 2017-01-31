@@ -371,14 +371,19 @@ struct Proxy {
         this.is_lazy_proxy	= true ;
     }
 
-    const(JSONValue)* loadFromJsonValue(Type _type, string _name, const(JSONValue)* pParent,
-        Proxy* _default) {
+    const(JSONValue)* loadFromJsonValue(Type _type, string _name, const(JSONValue)* pParent, Proxy* _default) {
         type = _type;
         name = _name;
         const(JSONValue)* pJson = _name in *pParent;
         if (pJson is null) {
             return null;
         }
+        if (pJson.type is JSON_TYPE.STRING) {
+			pJson = pJson.str in *pParent;
+	        if (pJson is null) {
+	            return null;
+	        }
+		}
         if (pJson.type !is JSON_TYPE.OBJECT) {
             return null;
         }
