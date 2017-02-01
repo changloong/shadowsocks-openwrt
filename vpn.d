@@ -160,7 +160,7 @@ struct _T {
     }
 
     static const(JSONValue)* getJsonValue(T)(ref T t, const(JSONValue)* pObj, string key, ref bool exists) {
-        scope const(JSONValue)* p = key in *pObj;
+        const(JSONValue)* p = key in *pObj;
 		if (p !is null && p.type is JSON_TYPE.STRING && p.str.length > 1 && p.str[0] is '@' ) {
 			p = p.str[1..$] in *pObj ;
 		}
