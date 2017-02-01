@@ -160,9 +160,15 @@ struct _T {
     }
 
     static const(JSONValue)* getJsonValue(T)(ref T t, const(JSONValue)* pObj, string key, ref bool exists) {
+		exists	= false ;
         const(JSONValue)* p = key in *pObj;
 		if (p !is null && p.type is JSON_TYPE.STRING && p.str.length > 1 && p.str[0] is '@' ) {
-			p = p.str[1..$] in *pObj ;
+			auto jumpKey	= p.str;
+			p = jumpKey[1..$] in *pObj ;
+			if( p is null ) {
+				_G.Error("`%s`:`%s` not exists!", key, jumpKey);
+				return null;
+			}
 		}
         if (p !is null) {
             exists = true;
@@ -236,9 +242,7 @@ struct _T {
                     return p;
                 }
             }
-        } else {
-            exists = false;
-        }
+        } 
         return null;
     }
 }
@@ -378,12 +382,17 @@ struct Proxy {
         type = _type;
         name = _name;
         const(JSONValue)* pJson = _name in *pParent;
-        if (pJson !is null && pJson.type is JSON_TYPE.STRING && pJson.str.length > 1 && pJson.str[0] is '@' ) {
-			pJson = pJson.str[1..$] in *pParent;
-		}
         if (pJson is null) {
             return null;
         }
+        if (pJson.type is JSON_TYPE.STRING && pJson.str.length > 1 && pJson.str[0] is '@' ) {
+			auto jumpKey = pJson.str ;
+			pJson = jumpKey[1..$] in *pParent;
+			if( pJson is null) {
+				_G.Error("`%s`:`%s` not exists!", _name, jumpKey);
+				return null;
+			}
+		}
         if (pJson.type !is JSON_TYPE.OBJECT) {
             return null;
         }
