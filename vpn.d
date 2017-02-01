@@ -161,6 +161,9 @@ struct _T {
 
     static const(JSONValue)* getJsonValue(T)(ref T t, const(JSONValue)* pObj, string key, ref bool exists) {
         scope const(JSONValue)* p = key in *pObj;
+		if (p !is null && p.type is JSON_TYPE.STRING && p.str.length > 1 && p.str[0] is '@' ) {
+			p = p.str[1..$] in *pObj ;
+		}
         if (p !is null) {
             exists = true;
             static if (isBoolean!T) {
@@ -375,15 +378,12 @@ struct Proxy {
         type = _type;
         name = _name;
         const(JSONValue)* pJson = _name in *pParent;
+        if (pJson !is null && pJson.type is JSON_TYPE.STRING && pJson.str.length > 1 && pJson.str[0] is '@' ) {
+			pJson = pJson.str[1..$] in *pParent;
+		}
         if (pJson is null) {
             return null;
         }
-        if (pJson.type is JSON_TYPE.STRING) {
-			pJson = pJson.str in *pParent;
-	        if (pJson is null) {
-	            return null;
-	        }
-		}
         if (pJson.type !is JSON_TYPE.OBJECT) {
             return null;
         }
